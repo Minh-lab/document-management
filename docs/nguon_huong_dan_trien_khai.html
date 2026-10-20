@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<title>Hướng dẫn triển khai dự án</title>
+<style>
+  @page {
+    size: A4;
+    margin: 20mm 16mm 18mm 16mm;
+    @top-left {
+      content: "Hướng dẫn triển khai — Document Management";
+      font-family: "Noto Sans", sans-serif;
+      font-size: 8pt;
+      color: #7a8794;
+    }
+    @top-right {
+      content: "v1.0";
+      font-family: "Noto Sans", sans-serif;
+      font-size: 8pt;
+      color: #7a8794;
+    }
+    @bottom-center {
+      content: counter(page) " / " counter(pages);
+      font-family: "Noto Sans", sans-serif;
+      font-size: 8pt;
+      color: #7a8794;
+    }
+  }
+  @page :first { margin: 0; @top-left { content: none } @top-right { content: none } @bottom-center { content: none } }
+
+  * { box-sizing: border-box; }
+  body {
+    font-family: "Noto Sans", "DejaVu Sans", sans-serif;
+    font-size: 10pt;
+    line-height: 1.55;
+    color: #1f2933;
+    margin: 0;
+  }
+
+  /* ---------- Trang bìa ---------- */
+  .cover {
+    height: 297mm;
+    page-break-after: always;
+    background: linear-gradient(150deg, #0b3b5c 0%, #12659b 55%, #1f8ac0 100%);
+    color: #fff;
+    padding: 30mm 22mm;
+    position: relative;
+  }
+  .cover .org { font-size: 10pt; letter-spacing: 2px; text-transform: uppercase; opacity: .85; }
+  .cover h1 { font-size: 30pt; line-height: 1.2; margin: 18mm 0 4mm; font-weight: 700; color: #ffffff; }
+  .cover .sub { font-size: 13pt; opacity: .95; font-weight: 300; }
+  .cover .rule { width: 40mm; height: 1.4mm; background: #ffc857; margin: 10mm 0; }
+  .cover .meta { position: absolute; bottom: 30mm; left: 22mm; right: 22mm; font-size: 10pt; }
+  .cover .meta table { width: 100%; border-collapse: collapse; }
+  .cover .meta td { padding: 2.2mm 0; border-bottom: .3mm solid rgba(255,255,255,.25); vertical-align: top; }
+  .cover .meta td:first-child { width: 38mm; opacity: .75; }
+  .cover .badge {
+    display: inline-block; margin-top: 8mm; padding: 2mm 5mm;
+    border: .35mm solid rgba(255,255,255,.6); border-radius: 20mm; font-size: 9pt;
+  }
+
+  /* ---------- Mục lục ---------- */
+  .toc { page-break-after: always; }
+  .toc h2 { border: none; margin-bottom: 6mm; }
+  .toc ol { list-style: none; padding-left: 0; counter-reset: toc; }
+  .toc li { margin: 0 0 2.6mm; font-size: 10.5pt; }
+  .toc li a { color: #1f2933; text-decoration: none; }
+  .toc li a::after {
+    content: target-counter(attr(href), page);
+    float: right;
+    color: #12659b;
+    font-weight: 600;
+  }
+  .toc li .num { color: #12659b; font-weight: 700; display: inline-block; width: 9mm; }
+  .toc .hint { margin-top: 8mm; font-size: 9.5pt; color: #5b6b7a; background: #f2f6fa; padding: 4mm 5mm; border-left: 3pt solid #12659b; }
+
+  /* ---------- Tiêu đề ---------- */
+  h1 { font-size: 18pt; color: #0b3b5c; margin: 0 0 4mm; }
+  h2 {
+    font-size: 13.5pt; color: #0b3b5c;
+    margin: 8mm 0 3mm; padding-bottom: 1.5mm;
+    border-bottom: .5pt solid #cfdae5;
+    page-break-after: avoid;
+  }
+  h3 { font-size: 11pt; color: #12659b; margin: 5.5mm 0 2mm; page-break-after: avoid; }
+  p { margin: 0 0 2.8mm; }
+  ul, ol { margin: 0 0 3mm; padding-left: 6mm; }
+  li { margin-bottom: 1.4mm; }
+  a { color: #12659b; text-decoration: none; }
+  strong { color: #0b3b5c; }
+  .section { page-break-before: always; }
+
+  /* ---------- Code ---------- */
+  code {
+    font-family: "Noto Sans Mono", "DejaVu Sans Mono", monospace;
+    font-size: 8.6pt;
+    background: #eef3f8;
+    padding: .3mm 1.2mm;
+    border-radius: 1mm;
+    color: #0b3b5c;
+  }
+  pre {
+    font-family: "Noto Sans Mono", "DejaVu Sans Mono", monospace;
+    font-size: 8.2pt;
+    line-height: 1.45;
+    background: #0f2333;
+    color: #e6edf3;
+    padding: 3.2mm 4mm;
+    border-radius: 1.6mm;
+    overflow: hidden;
+    white-space: pre-wrap;
+    word-break: break-word;
+    page-break-inside: avoid;
+    margin: 0 0 3.5mm;
+  }
+  pre code { background: none; color: inherit; padding: 0; font-size: 8.2pt; }
+  pre .c { color: #7f9db9; }
+
+  /* ---------- Bảng ---------- */
+  table.tbl {
+    width: 100%; border-collapse: collapse; margin: 0 0 4mm;
+    font-size: 9pt; page-break-inside: avoid;
+  }
+  table.tbl th {
+    background: #0b3b5c; color: #fff; text-align: left;
+    padding: 2.2mm 2.6mm; font-weight: 600; font-size: 8.8pt;
+  }
+  table.tbl td { padding: 2.2mm 2.6mm; border-bottom: .3pt solid #dbe4ec; vertical-align: top; }
+  table.tbl tr:nth-child(even) td { background: #f6f9fc; }
+
+  /* ---------- Hộp ghi chú ---------- */
+  .box {
+    padding: 3.4mm 4.2mm; margin: 0 0 4mm; border-radius: 1.4mm;
+    font-size: 9.4pt; page-break-inside: avoid;
+  }
+  .box .t { font-weight: 700; display: block; margin-bottom: 1.2mm; }
+  .info { background: #eaf3fb; border-left: 3pt solid #12659b; }
+  .warn { background: #fff6e5; border-left: 3pt solid #e8a33d; }
+  .danger { background: #fdecec; border-left: 3pt solid #cf3f3f; }
+  .ok { background: #eaf7ee; border-left: 3pt solid #2f9e56; }
+
+  /* ---------- Các khối khác ---------- */
+  .step { margin: 0 0 2mm; }
+  .step .n {
+    display: inline-block; width: 6mm; height: 6mm; line-height: 6mm;
+    background: #12659b; color: #fff; border-radius: 50%;
+    text-align: center; font-size: 8.5pt; font-weight: 700; margin-right: 2mm;
+  }
+  .checklist { list-style: none; padding-left: 0; }
+  .checklist li { padding-left: 7mm; position: relative; margin-bottom: 2mm; font-size: 9.6pt; }
+  .checklist li::before {
+    content: ""; position: absolute; left: 0; top: 1mm;
+    width: 3.6mm; height: 3.6mm; border: .4pt solid #9fb3c8; border-radius: .6mm;
+  }
+  .path { font-family: "Noto Sans Mono", monospace; font-size: 8.8pt; color: #0b3b5c; }
+  .two-col { display: flex; gap: 6mm; }
+  .two-col > div { flex: 1; }
+  .small { font-size: 8.8pt; color: #5b6b7a; }
+  .footer-note { margin-top: 6mm; padding-top: 3mm; border-top: .4pt solid #dbe4ec; font-size: 8.6pt; color: #5b6b7a; }
+</style>
+</head>
+<body>
+
+<!-- ============ TRANG BÌA ============ -->
+<div class="cover">
+  <div class="org">Nhóm 5 thành viên · Flutter · Firebase · Supabase</div>
+  <h1>Hướng dẫn triển khai<br>dự án Quản lý Tài liệu</h1>
+  <div class="rule"></div>
+  <div class="sub">Từ clone mã nguồn đến chạy ứng dụng trên Android và Web</div>
+  <div class="badge">Dành cho thành viên nhóm: Minh · Đạt · Hạnh · Quân · Đăng</div>
+
+  <div class="meta">
+    <table>
+      <tr><td>Repository</td><td>github.com/Minh-lab/document-management</td></tr>
+      <tr><td>Phiên bản</td><td>1.0 — 20/10/2026</td></tr>
+      <tr><td>Công nghệ</td><td>Flutter (Dart) · Firebase Auth/Messaging · Supabase Database/Storage</td></tr>
+      <tr><td>Nền tảng</td><td>Android · Web (Chrome)</td></tr>
+    </table>
+  </div>
+</div>
+
+<!-- ============ MỤC LỤC ============ -->
+<div class="toc">
+  <h2 style="border:none">Mục lục</h2>
+  <ol>
+    <li><span class="num">1</span><a href="#s1">Tổng quan kiến trúc</a></li>
+    <li><span class="num">2</span><a href="#s2">Chuẩn bị môi trường</a></li>
+    <li><span class="num">3</span><a href="#s3">Clone mã nguồn và cấu trúc thư mục</a></li>
+    <li><span class="num">4</span><a href="#s4">Thiết lập Supabase (Database &amp; Storage)</a></li>
+    <li><span class="num">5</span><a href="#s5">Thiết lập Firebase (Authentication &amp; Messaging)</a></li>
+    <li><span class="num">6</span><a href="#s6">Cấu hình ứng dụng và chạy</a></li>
+    <li><span class="num">7</span><a href="#s7">Checklist kiểm tra sau khi thiết lập</a></li>
+    <li><span class="num">8</span><a href="#s8">Lỗi thường gặp và cách xử lý</a></li>
+    <li><span class="num">9</span><a href="#s9">Quy trình Git làm việc nhóm</a></li>
+    <li><span class="num">10</span><a href="#s10">Bảo mật và lưu ý quan trọng</a></li>
+  </ol>
+
+  <div class="hint">
+    <strong>Đường nhanh:</strong> nếu bạn chỉ cần chạy app để code giao diện, hãy dùng chung
+    Firebase/Supabase project của nhóm (khóa đã có trong repo) — chỉ cần làm mục 2, 3, 6 rồi sang mục 7.
+    Chỉ làm mục 4 và 5 khi bạn cần project riêng hoặc được giao phụ trách backend.
+  </div>
+</div>
+
+<!-- ============ 1 ============ -->
+<div class="section" id="s1">
+  <h1>1. Tổng quan kiến trúc</h1>
+  <p>Ứng dụng dùng <strong>hai dịch vụ đám mây song song</strong>, phân chia trách nhiệm rõ ràng:</p>
+
+  <table class="tbl">
+    <tr><th style="width:26%">Thành phần</th><th style="width:30%">Dịch vụ</th><th>Nhiệm vụ</th></tr>
+    <tr><td>Xác thực</td><td>Firebase Authentication</td><td>Đăng nhập ẩn danh (anonymous) và Google Sign-In; sinh UID duy nhất cho mỗi người dùng</td></tr>
+    <tr><td>Thông báo</td><td>Firebase Cloud Messaging</td><td>Đẩy thông báo khi có yêu cầu mượn tài liệu (tính năng mở rộng)</td></tr>
+    <tr><td>Cơ sở dữ liệu</td><td>Supabase (PostgreSQL)</td><td>Bảng <code>users</code>, <code>documents</code>, <code>categories</code>, <code>permissions</code></td></tr>
+    <tr><td>Lưu trữ tệp</td><td>Supabase Storage</td><td>Bucket <code>documents</code>, đường dẫn <code>users/{uid}/documents/{docId}/{file}</code></td></tr>
+  </table>
+
+  <h3>Luồng khởi động ứng dụng</h3>
+  <pre><code>main()
+ ├─ Firebase.initializeApp(options: DefaultFirebaseOptions)
+ ├─ Supabase.initialize(url, publishableKey)
+ ├─ initializeServices()
+ │    ├─ Firebase Auth: đăng nhập ẩn danh nếu chưa có user
+ │    ├─ Upsert user vào bảng users (Supabase)
+ │    └─ Seed danh mục mặc định
+ └─ runApp(HomePage)</code></pre>
+
+  <div class="box info">
+    <span class="t">Vì sao cần cả hai?</span>
+    Firebase lo phần <em>xác thực và thông báo</em> (miễn phí, SDK ổn định trên mobile/web);
+    Supabase lo phần <em>dữ liệu quan hệ và tệp</em> (PostgreSQL + Storage + truy vấn realtime).
+    Hai bên liên kết bằng <strong>Firebase UID</strong> được lưu trong cột <code>user_id</code>.
+  </div>
+
+  <h3>Thông tin project của nhóm</h3>
+  <table class="tbl">
+    <tr><th style="width:30%">Hạng mục</th><th>Giá trị</th></tr>
+    <tr><td>Firebase project</td><td><code>document-management-f7883</code></td></tr>
+    <tr><td>Android applicationId</td><td><code>com.example.code</code></td></tr>
+    <tr><td>Supabase URL</td><td><code>https://lwebnjcszbldlqwjrcan.supabase.co</code></td></tr>
+    <tr><td>Storage bucket</td><td><code>documents</code></td></tr>
+  </table>
+</div>
+
+<!-- ============ 2 ============ -->
+<div class="section" id="s2">
+  <h1>2. Chuẩn bị môi trường</h1>
+
+  <h3>2.1. Phần mềm bắt buộc</h3>
+  <table class="tbl">
+    <tr><th style="width:22%">Công cụ</th><th style="width:24%">Phiên bản</th><th>Cách kiểm tra</th></tr>
+    <tr><td>Git</td><td>≥ 2.30</td><td><code>git --version</code></td></tr>
+    <tr><td>Flutter SDK</td><td>3.x (Dart ≥ 3.13)</td><td><code>flutter --version</code></td></tr>
+    <tr><td>JDK</td><td>17 (cho Android)</td><td><code>java -version</code></td></tr>
+    <tr><td>Android SDK / Android Studio</td><td>API 34+</td><td><code>flutter doctor</code></td></tr>
+    <tr><td>Chrome</td><td>Bản mới nhất</td><td>Dùng để chạy Flutter Web</td></tr>
+    <tr><td>VS Code / Android Studio</td><td>—</td><td>Cài extension Flutter + Dart</td></tr>
+  </table>
+
+  <pre><code><span class="c"># Kiểm tra tổng thể, phải hết dấu "✗" ở mục Flutter, Android toolchain, Chrome</span>
+flutter doctor -v</code></pre>
+
+  <h3>2.2. Công cụ hỗ trợ thiết lập (chỉ cần khi làm mục 4, 5)</h3>
+  <pre><code><span class="c"># Firebase CLI + FlutterFire CLI</span>
+npm install -g firebase-tools
+dart pub global activate flutterfire_cli
+
+<span class="c"># Supabase CLI</span>
+npm install -g supabase
+
+<span class="c"># Đăng nhập</span>
+firebase login
+supabase login</code></pre>
+
+  <div class="box warn">
+    <span class="t">Windows</span>
+    Nếu <code>flutterfire</code> không nhận lệnh, thêm thư mục sau vào <code>PATH</code>:
+    <span class="path">%LOCALAPPDATA%\Pub\Cache\bin</span>. Trên macOS/Linux: <span class="path">$HOME/.pub-cache/bin</span>.
+  </div>
+</div>
+
+<!-- ============ 3 ============ -->
+<div class="section" id="s3">
+  <h1>3. Clone mã nguồn và cấu trúc thư mục</h1>
+
+  <pre><code>git clone https://github.com/Minh-lab/document-management.git
+cd document-management</code></pre>
+
+  <p>Repo gồm hai phần: mã nguồn ứng dụng và tài liệu.</p>
+  <pre><code>document-management/
+├── code/                  <span class="c"># Ứng dụng Flutter</span>
+│   ├── lib/
+│   │   ├── main.dart              <span class="c"># Khởi tạo Firebase + Supabase</span>
+│   │   ├── functions.dart         <span class="c"># Nghiệp vụ dùng chung</span>
+│   │   ├── config/
+│   │   │   ├── supabase_config.dart   <span class="c"># URL + publishable key</span>
+│   │   │   └── firebase_config.dart   <span class="c"># Placeholder</span>
+│   │   ├── firebase_options.dart      <span class="c"># FlutterFire sinh ra</span>
+│   │   ├── pages/                 <span class="c"># Màn hình (UI)</span>
+│   │   ├── widgets/               <span class="c"># Widget dùng lại</span>
+│   │   ├── services/              <span class="c"># Supabase / Storage</span>
+│   │   └── struct/                <span class="c"># Model dữ liệu</span>
+│   ├── android/app/google-services.json
+│   ├── supabase/functions/verify-firebase-token/
+│   ├── supabase_schema.sql
+│   ├── supabase_rls_policies.sql
+│   ├── supabase_storage_policies.sql
+│   └── pubspec.yaml
+└── docs/                  <span class="c"># Đặc tả, báo cáo, kế hoạch phân công</span></code></pre>
+
+  <h3>Cài dependencies</h3>
+  <pre><code>cd code
+flutter pub get</code></pre>
+
+  <div class="box info">
+    <span class="t">Quan trọng</span>
+    Mọi lệnh <code>flutter</code>, <code>dart</code>, <code>firebase</code> trong tài liệu này được chạy
+    <strong>bên trong thư mục <span class="path">code/</span></strong>, không phải thư mục gốc repo.
+  </div>
+</div>
+
+<!-- ============ 4 ============ -->
+<div class="section" id="s4">
+  <h1>4. Thiết lập Supabase (Database &amp; Storage)</h1>
+
+  <div class="box ok">
+    <span class="t">Trường hợp thường gặp: dùng project chung của nhóm</span>
+    Project <code>lwebnjcszbldlqwjrcan</code> đã được cấu hình sẵn và khóa đã nằm trong
+    <span class="path">code/lib/config/supabase_config.dart</span>. Bạn <strong>không cần làm mục 4.1–4.6</strong>,
+    chỉ cần xác nhận app kết nối được (mục 4.7). Liên hệ Minh để được thêm vào organization nếu cần xem dashboard.
+  </div>
+
+  <h3>4.1. Tạo project (chỉ khi làm project riêng)</h3>
+  <ol>
+    <li>Mở <a href="https://supabase.com/dashboard">supabase.com/dashboard</a> → <strong>New project</strong>.</li>
+    <li>Đặt tên (ví dụ <code>doc-manager-db</code>), chọn region <strong>Southeast Asia (Singapore)</strong>.</li>
+    <li>Đặt database password mạnh và lưu lại; chờ khoảng 2 phút để project khởi tạo.</li>
+  </ol>
+
+  <h3>4.2. Chạy schema theo đúng thứ tự</h3>
+  <p>Vào <strong>SQL Editor → New query</strong>, dán và chạy lần lượt <u>đúng thứ tự</u> sau (mỗi file một lần chạy):</p>
+  <table class="tbl">
+    <tr><th style="width:8%">#</th><th style="width:40%">Tệp</th><th>Tác dụng</th></tr>
+    <tr><td>1</td><td><span class="path">supabase_schema.sql</span></td><td>Tạo bảng <code>categories</code>, <code>documents</code>, index, trigger <code>updated_at</code>, seed danh mục, bật realtime</td></tr>
+    <tr><td>2</td><td><span class="path">supabase_rls_policies.sql</span></td><td>Tạo bảng <code>users</code>, <code>permissions</code> và các policy RLS</td></tr>
+    <tr><td>3</td><td><span class="path">supabase_storage_policies.sql</span></td><td>Cấp quyền CRUD bucket <code>documents</code> cho người dùng đã đăng nhập</td></tr>
+  </table>
+
+  <div class="box warn">
+    <span class="t">Thứ tự quan trọng</span>
+    File 3 tham chiếu bucket và policy storage, phải chạy <strong>sau</strong> khi đã tạo bucket ở mục 4.3.
+    Nếu chạy sai thứ tự, chỉ cần chạy lại file đó — các lệnh đều dùng <code>IF NOT EXISTS</code> / <code>DROP POLICY IF EXISTS</code>.
+  </div>
+
+  <h3>4.3. Tạo Storage bucket</h3>
+  <ol>
+    <li>Vào <strong>Storage → New bucket</strong>.</li>
+    <li>Tên bucket: <code>documents</code> (chính xác, phân biệt chữ thường).</li>
+    <li>Bật <strong>Public bucket</strong> để tệp có thể mở bằng URL công khai (phù hợp đồ án).</li>
+    <li>Sau khi tạo, chạy <span class="path">supabase_storage_policies.sql</span> ở SQL Editor.</li>
+  </ol>
+
+  <h3>4.4. Bật Realtime</h3>
+  <p>File schema đã thêm bảng vào publication. Kiểm tra tại <strong>Database → Replication</strong>:
+  <code>documents</code> và <code>categories</code> phải ở trạng thái bật. Nếu chưa, bật thủ công.</p>
+
+  <h3>4.5. Lấy khóa API</h3>
+  <p>Vào <strong>Settings → API</strong>:</p>
+  <ul>
+    <li><strong>Project URL</strong> — dạng <code>https://&lt;project-ref&gt;.supabase.co</code></li>
+    <li><strong>anon / publishable key</strong> — khóa công khai dùng trong app</li>
+    <li><strong>service_role key</strong> — <span style="color:#cf3f3f;font-weight:600">tuyệt đối không đưa vào app</span></li>
+  </ul>
+
+  <h3>4.6. Cập nhật cấu hình trong code</h3>
+  <p>Mở <span class="path">code/lib/config/supabase_config.dart</span> và thay hai giá trị:</p>
+  <pre><code>class SupabaseConfig {
+  static const String supabaseUrl = 'https://&lt;project-ref&gt;.supabase.co';
+  static const String supabaseAnonKey = '&lt;anon-publishable-key&gt;';
+  // ...
+}</code></pre>
+
+  <h3>4.7. (Tùy chọn) Deploy Edge Function đồng bộ Firebase → Supabase</h3>
+  <p>Hàm <code>verify-firebase-token</code> xác thực Firebase ID token và cấp JWT cho Supabase,
+  giúp RLS nhận đúng <code>auth.uid()</code>. Nếu chưa deploy, app vẫn chạy nhưng RLS chỉ hoạt động ở mức anon.</p>
+  <pre><code><span class="c"># Gắn project (chạy ở thư mục code/)</span>
+supabase link --project-ref &lt;project-ref&gt;
+
+<span class="c"># Nạp biến môi trường cho function</span>
+supabase secrets set FIREBASE_PROJECT_ID=document-management-f7883
+supabase secrets set SUPABASE_JWT_SECRET=&lt;jwt-secret-trong-Settings-API&gt;
+
+<span class="c"># Deploy (bỏ xác thực JWT vì function tự xác thực Firebase token)</span>
+supabase functions deploy verify-firebase-token --no-verify-jwt</code></pre>
+
+  <div class="box info">
+    <span class="t">Kiểm tra nhanh bằng curl</span>
+    <code>curl -i https://&lt;project-ref&gt;.supabase.co/functions/v1/verify-firebase-token</code> —
+    trả về <code>401</code> kèm JSON là function đã sống (thiếu token là đúng).
+  </div>
+</div>
+
+<!-- ============ 5 ============ -->
+<div class="section" id="s5">
+  <h1>5. Thiết lập Firebase (Authentication &amp; Messaging)</h1>
+
+  <div class="box ok">
+    <span class="t">Dùng project chung</span>
+    Nếu bạn dùng project <code>document-management-f7883</code> của nhóm, các tệp
+    <span class="path">lib/firebase_options.dart</span> và <span class="path">android/app/google-services.json</span>
+    đã có trong repo — <strong>bỏ qua mục 5.1–5.4</strong>. Chỉ cần đảm bảo bạn được thêm làm thành viên Firebase project
+    (liên hệ Minh) khi cần xem console.
+  </div>
+
+  <h3>5.1. Tạo Firebase project</h3>
+  <ol>
+    <li>Mở <a href="https://console.firebase.google.com/">console.firebase.google.com</a> → <strong>Add project</strong>.</li>
+    <li>Đặt tên (ví dụ <code>document-management</code>), có thể tắt Google Analytics cho gọn.</li>
+    <li>Chờ khởi tạo xong → vào project.</li>
+  </ol>
+
+  <h3>5.2. Đăng ký ứng dụng Android</h3>
+  <ol>
+    <li><strong>Project settings → Your apps → Android</strong>.</li>
+    <li>Package name: <code>com.example.code</code> — phải khớp <code>applicationId</code> trong
+        <span class="path">android/app/build.gradle.kts</span>, nếu không app sẽ crash khi khởi động.</li>
+    <li>Tải <code>google-services.json</code> và đặt vào <span class="path">code/android/app/google-services.json</span>.</li>
+  </ol>
+
+  <h3>5.3. Đăng ký ứng dụng Web (để chạy <code>flutter run -d chrome</code>)</h3>
+  <p>Trong <strong>Project settings → Your apps → Web (&lt;/&gt;)</strong>, đặt nickname bất kỳ rồi copy đoạn <code>firebaseConfig</code>.
+  Bước 5.4 sẽ tự sinh cấu hình này, không cần dán tay vào <code>index.html</code>.</p>
+
+  <h3>5.4. Sinh cấu hình bằng FlutterFire CLI</h3>
+  <pre><code><span class="c"># Chạy trong thư mục code/</span>
+flutterfire configure --project=&lt;firebase-project-id&gt;
+
+<span class="c"># Chọn các nền tảng: android, web (có thể thêm ios, windows, linux)</span>
+<span class="c"># Kết quả: ghi đè lib/firebase_options.dart + tải google-services.json</span></code></pre>
+
+  <div class="box warn">
+    <span class="t">Package name không khớp</span>
+    Nếu đặt applicationId khác <code>com.example.code</code>, phải sửa <code>namespace</code> và
+    <code>applicationId</code> trong <span class="path">android/app/build.gradle.kts</span>, đổi tên thư mục
+    <span class="path">android/app/src/main/kotlin/com/example/code/</span>, rồi đăng ký lại app trên Firebase.
+    Cách nhanh nhất là giữ nguyên <code>com.example.code</code>.
+  </div>
+
+  <h3>5.5. Bật phương thức đăng nhập</h3>
+  <table class="tbl">
+    <tr><th style="width:26%">Provider</th><th>Thiết lập</th></tr>
+    <tr><td>Anonymous</td><td><strong>Authentication → Sign-in method → Anonymous → Enable</strong>. Bắt buộc, vì app tự đăng nhập ẩn danh khi chưa có tài khoản.</td></tr>
+    <tr><td>Google</td><td>Bật Google → chọn support email. Trên Android cần thêm <strong>SHA-1</strong> của máy vào Project settings (lấy bằng <code>cd android &amp;&amp; ./gradlew signingReport</code>).</td></tr>
+  </table>
+
+  <h3>5.6. Quy tắc Storage (chỉ khi dùng Firebase Storage)</h3>
+  <p>Ứng dụng hiện lưu tệp trên <strong>Supabase Storage</strong>; Firebase Storage chỉ còn là mã cũ.
+  Nếu vẫn muốn dùng, vào <strong>Storage → Rules</strong>:</p>
+  <pre><code>rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /users/{userId}/documents/{docId}/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null &amp;&amp; request.auth.uid == userId;
+    }
+  }
+}</code></pre>
+
+  <h3>5.7. Bật Cloud Messaging (cho tính năng thông báo)</h3>
+  <ol>
+    <li>Android: thêm dependency <code>firebase_messaging</code> vào <span class="path">pubspec.yaml</span> (nếu chưa có).</li>
+    <li>Android 13+: xin quyền <code>POST_NOTIFICATIONS</code> trong <code>AndroidManifest.xml</code>.</li>
+    <li>Web: tạo cặp khóa Web Push tại <strong>Project settings → Cloud Messaging → Web configuration</strong>,
+        khai báo <code>firebase-messaging-sw.js</code> trong <span class="path">web/</span>.</li>
+    <li>Lưu FCM token vào bảng <code>device_tokens</code> trên Supabase để Edge Function gửi thông báo.</li>
+  </ol>
+
+  <div class="box danger">
+    <span class="t">Không commit khóa bí mật</span>
+    <code>google-services.json</code> và <code>firebase_options.dart</code> chỉ chứa định danh công khai của app
+    (apiKey dạng <code>AIza...</code> không phải bí mật), nhưng <strong>service account JSON</strong>,
+    <code>service_role</code> key và JWT secret thì tuyệt đối không được đưa lên Git.
+  </div>
+</div>
+
+<!-- ============ 6 ============ -->
+<div class="section" id="s6">
+  <h1>6. Cấu hình ứng dụng và chạy</h1>
+
+  <h3>6.1. Kiểm tra hai tệp cấu hình</h3>
+  <table class="tbl">
+    <tr><th style="width:46%">Tệp</th><th>Nội dung cần đúng</th></tr>
+    <tr><td><span class="path">lib/config/supabase_config.dart</span></td><td><code>supabaseUrl</code>, <code>supabaseAnonKey</code></td></tr>
+    <tr><td><span class="path">lib/firebase_options.dart</span></td><td><code>projectId</code>, <code>apiKey</code>, <code>appId</code> của Firebase</td></tr>
+  </table>
+
+  <h3>6.2. Chạy ở chế độ debug</h3>
+  <pre><code>cd code
+flutter pub get
+
+flutter devices                 <span class="c"># xem danh sách thiết bị</span>
+flutter run -d chrome           <span class="c"># Web</span>
+flutter run -d emulator-5554    <span class="c"># Android (đổi theo id thực tế)</span></code></pre>
+
+  <div class="box info">
+    <span class="t">Web lần đầu</span>
+    Nếu trình duyệt chặn popup khi đăng nhập Google, cho phép popup cho <code>localhost</code>.
+    Với đăng nhập ẩn danh thì không cần bước này.
+  </div>
+
+  <h3>6.3. Build bản phát hành</h3>
+  <pre><code><span class="c"># Android APK</span>
+flutter build apk --release
+<span class="c"># Kết quả: build/app/outputs/flutter-apk/app-release.apk</span>
+
+<span class="c"># Web</span>
+flutter build web --release
+<span class="c"># Kết quả: build/web/ — có thể deploy lên Firebase Hosting, Vercel, Netlify</span></code></pre>
+
+  <h3>6.4. Lệnh kiểm tra chất lượng trước khi mở PR</h3>
+  <pre><code>flutter analyze
+flutter test
+dart format --set-exit-if-changed lib test</code></pre>
+</div>
+
+<!-- ============ 7 ============ -->
+<div class="section" id="s7">
+  <h1>7. Checklist kiểm tra sau khi thiết lập</h1>
+  <p>Chạy app và đánh dấu từng mục. Nếu mục nào sai, xem bảng lỗi ở mục 8.</p>
+
+  <h3>Khởi động và xác thực</h3>
+  <ul class="checklist">
+    <li>App mở không có màn hình trắng, không lỗi đỏ trên console</li>
+    <li>Log có dòng xác nhận Firebase và Supabase đã khởi tạo</li>
+    <li>Người dùng được tạo trong Firebase Authentication (tab Users)</li>
+    <li>Bản ghi tương ứng xuất hiện trong bảng <code>users</code> trên Supabase</li>
+  </ul>
+
+  <h3>Dữ liệu và tệp</h3>
+  <ul class="checklist">
+    <li>Danh mục mặc định hiển thị (Bài giảng, Bài tập, Tham khảo)</li>
+    <li>Thêm tài liệu không kèm tệp thành công</li>
+    <li>Thêm tài liệu có tệp: tệp xuất hiện trong bucket <code>documents</code></li>
+    <li>Mở tệp từ danh sách tải được nội dung</li>
+    <li>Sửa tài liệu: <code>updated_at</code> thay đổi</li>
+    <li>Xóa tài liệu: bản ghi và tệp đều bị xóa</li>
+  </ul>
+
+  <h3>Chia sẻ và realtime</h3>
+  <ul class="checklist">
+    <li>Chia sẻ tài liệu cho người dùng khác với quyền viewer/editor</li>
+    <li>Người được chia sẻ thấy tài liệu trong mục "Được chia sẻ"</li>
+    <li>Mở hai tab: thêm/sửa ở tab 1, tab 2 tự cập nhật</li>
+    <li>Đăng xuất và đăng nhập lại vẫn thấy dữ liệu cũ</li>
+  </ul>
+
+  <h3>Đa nền tảng</h3>
+  <ul class="checklist">
+    <li>Chạy được trên Chrome và trên Android (hoặc emulator)</li>
+    <li>Thu nhỏ cửa sổ trình duyệt: layout không tràn, không lỗi overflow</li>
+    <li>Bàn phím ảo trên mobile không che ô nhập liệu</li>
+  </ul>
+</div>
+
+<!-- ============ 8 ============ -->
+<div class="section" id="s8">
+  <h1>8. Lỗi thường gặp và cách xử lý</h1>
+
+  <table class="tbl">
+    <tr><th style="width:30%">Lỗi / hiện tượng</th><th style="width:28%">Nguyên nhân</th><th>Cách xử lý</th></tr>
+    <tr>
+      <td><code>Failed to load firebase_options.dart</code> / <code>FirebaseAppNotInitialized</code></td>
+      <td>Chưa chạy <code>flutterfire configure</code> hoặc file bị ghi đè</td>
+      <td>Chạy lại <code>flutterfire configure</code>, đảm bảo <code>main.dart</code> gọi <code>Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)</code></td>
+    </tr>
+    <tr>
+      <td>App Android crash ngay khi mở</td>
+      <td>Thiếu <code>google-services.json</code> hoặc package name không khớp</td>
+      <td>Đặt file đúng <span class="path">android/app/</span>; kiểm tra <code>applicationId</code> = package đã đăng ký</td>
+    </tr>
+    <tr>
+      <td><code>Supabase not initialized</code></td>
+      <td>Chưa gọi <code>Supabase.initialize()</code> hoặc sai URL/key</td>
+      <td>Kiểm tra <span class="path">main.dart</span> và <span class="path">supabase_config.dart</span></td>
+    </tr>
+    <tr>
+      <td><code>new row violates row-level security policy</code></td>
+      <td>RLS bật nhưng chưa có policy phù hợp, hoặc <code>auth.uid()</code> là NULL</td>
+      <td>Chạy <code>supabase_rls_policies.sql</code>; kiểm tra người dùng đã đăng nhập; xem lại policy của bảng liên quan</td>
+    </tr>
+    <tr>
+      <td><code>Bucket not found</code></td>
+      <td>Chưa tạo bucket hoặc sai tên</td>
+      <td>Tạo bucket tên chính xác <code>documents</code>, chạy lại file storage policies</td>
+    </tr>
+    <tr>
+      <td><code>Permission denied</code> khi upload</td>
+      <td>Bucket private hoặc thiếu policy INSERT</td>
+      <td>Bật public bucket hoặc chạy <code>supabase_storage_policies.sql</code></td>
+    </tr>
+    <tr>
+      <td>CORS error trên Web</td>
+      <td>Domain chưa được cho phép / chưa cấu hình CORS cho storage</td>
+      <td>Supabase: thêm <code>localhost</code> vào URL Configuration; Firebase: cấu hình CORS bucket</td>
+    </tr>
+    <tr>
+      <td>Realtime không cập nhật</td>
+      <td>Bảng chưa được thêm vào publication</td>
+      <td>Database → Replication → bật cho <code>documents</code>, <code>categories</code></td>
+    </tr>
+    <tr>
+      <td>Đăng nhập Google thất bại trên Android</td>
+      <td>Thiếu SHA-1 / SHA-256</td>
+      <td><code>cd android &amp;&amp; ./gradlew signingReport</code>, thêm fingerprint vào Firebase rồi tải lại <code>google-services.json</code></td>
+    </tr>
+    <tr>
+      <td><code>Gradle build failed</code> / JDK mismatch</td>
+      <td>Sai phiên bản JDK</td>
+      <td>Dùng JDK 17: <code>flutter config --jdk-dir=&lt;đường-dẫn-jdk-17&gt;</code></td>
+    </tr>
+    <tr>
+      <td>Đã pull code mới nhưng vẫn lỗi cũ</td>
+      <td>Cache build</td>
+      <td><code>flutter clean &amp;&amp; flutter pub get</code>, xóa <code>build/</code> và <code>.dart_tool/</code> nếu cần</td>
+    </tr>
+  </table>
+
+  <div class="box info">
+    <span class="t">Thứ tự debug nên theo</span>
+    1) Console Flutter → 2) Log Firebase (Authentication / Storage) → 3) Log Supabase (API / Database / Realtime)
+    → 4) Tab Network trong DevTools khi chạy Web.
+  </div>
+</div>
+
+<!-- ============ 9 ============ -->
+<div class="section" id="s9">
+  <h1>9. Quy trình Git làm việc nhóm</h1>
+
+  <div class="box danger">
+    <span class="t">Không push trực tiếp lên main</span>
+    Nhánh <code>main</code> là bản chạy được. Mọi thay đổi đi qua nhánh riêng và Pull Request.
+  </div>
+
+  <h3>9.1. Tạo nhánh và làm việc</h3>
+  <pre><code>git checkout main
+git pull origin main
+git checkout -b feature/ten-tinh-nang
+
+<span class="c"># ... code ...</span>
+
+git add .
+git commit -m "feat: mô tả ngắn gọn thay đổi"
+git push -u origin feature/ten-tinh-nang</code></pre>
+
+  <h3>9.2. Trước khi mở Pull Request</h3>
+  <pre><code>git fetch origin
+git rebase origin/main        <span class="c"># giải quyết conflict ngay tại máy</span>
+
+flutter analyze
+flutter test
+flutter run -d chrome         <span class="c"># kiểm tra giao diện</span></code></pre>
+
+  <h3>9.3. Quy ước đặt tên</h3>
+  <table class="tbl">
+    <tr><th style="width:28%">Loại</th><th style="width:36%">Mẫu</th><th>Ví dụ</th></tr>
+    <tr><td>Nhánh tính năng</td><td><code>feature/&lt;ten&gt;-&lt;viec&gt;</code></td><td><code>feature/hanh-tag-location</code></td></tr>
+    <tr><td>Nhánh sửa lỗi</td><td><code>fix/&lt;mo-ta&gt;</code></td><td><code>fix/login-google-android</code></td></tr>
+    <tr><td>Commit</td><td><code>feat|fix|docs|test|refactor|chore: ...</code></td><td><code>feat: thêm lọc theo tag</code></td></tr>
+  </table>
+
+  <h3>9.4. Điều kiện để PR được merge</h3>
+  <ul class="checklist">
+    <li>Ít nhất 1 người review và approve</li>
+    <li><code>flutter analyze</code> không có lỗi</li>
+    <li><code>flutter test</code> pass toàn bộ, kể cả <code>architecture_test.dart</code></li>
+    <li>Không commit tệp build, <code>.dart_tool/</code>, <code>.idea/</code> hay khóa bí mật</li>
+    <li>Có ảnh chụp màn hình nếu thay đổi giao diện</li>
+  </ul>
+</div>
+
+<!-- ============ 10 ============ -->
+<div class="section" id="s10">
+  <h1>10. Bảo mật và lưu ý quan trọng</h1>
+
+  <table class="tbl">
+    <tr><th style="width:34%">Loại khóa</th><th style="width:22%">Được commit?</th><th>Ghi chú</th></tr>
+    <tr><td>Supabase <code>anon</code> / <code>publishable</code></td><td style="color:#2f9e56;font-weight:600">Có</td><td>Thiết kế để nằm trong app; bảo vệ bằng RLS</td></tr>
+    <tr><td>Firebase <code>apiKey</code>, <code>appId</code></td><td style="color:#2f9e56;font-weight:600">Có</td><td>Định danh công khai của app, không phải bí mật</td></tr>
+    <tr><td>Supabase <code>service_role</code></td><td style="color:#cf3f3f;font-weight:600">Không</td><td>Bỏ qua toàn bộ RLS — chỉ dùng trong Edge Function/script server</td></tr>
+    <tr><td>Supabase JWT secret</td><td style="color:#cf3f3f;font-weight:600">Không</td><td>Chỉ đặt bằng <code>supabase secrets set</code></td></tr>
+    <tr><td>Firebase service account JSON</td><td style="color:#cf3f3f;font-weight:600">Không</td><td>Dùng cho Admin SDK ở server</td></tr>
+  </table>
+
+  <h3>Nguyên tắc RLS</h3>
+  <ul>
+    <li>Bật RLS cho <strong>mọi bảng</strong> chứa dữ liệu người dùng.</li>
+    <li>Policy đọc phải kiểm tra cả chủ sở hữu và người được chia sẻ:
+      <code>user_id = auth.uid()::text OR EXISTS (SELECT 1 FROM permissions ...)</code>.</li>
+    <li>Chỉ chủ sở hữu mới được <code>DELETE</code> tài liệu; người có quyền editor chỉ được <code>UPDATE</code>.</li>
+    <li>Luôn kiểm thử bằng <strong>hai tài khoản</strong>: A không được đọc tài liệu riêng của B.</li>
+  </ul>
+
+  <div class="box warn">
+    <span class="t">Hiện trạng cần lưu ý</span>
+    Bản hiện tại dùng Firebase Auth nhưng chưa có custom JWT cho Supabase, nên <code>auth.uid()</code>
+    có thể là <code>NULL</code> và một số policy đang được nới lỏng để app chạy được.
+    Khi Edge Function <code>verify-firebase-token</code> được deploy và app set session thành công,
+    hãy siết lại policy theo UID thật. Đây là việc của Minh (hạng mục #1) và cần review chéo.
+  </div>
+
+  <h3>Quy ước khi thêm bảng mới</h3>
+  <pre><code>ALTER TABLE ten_bang ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "chu so huu doc"
+  ON ten_bang FOR SELECT
+  USING (user_id = auth.uid()::text);</code></pre>
+
+  <h3>Hỗ trợ</h3>
+  <p>Khi gặp vấn đề, gửi vào nhóm kèm: <strong>lệnh đã chạy</strong>, <strong>log đầy đủ</strong>,
+  <strong>ảnh chụp màn hình</strong> và cho biết đang chạy <strong>Web hay Android</strong> — ba thông tin này
+  giúp xử lý nhanh hơn nhiều so với mô tả chung chung.</p>
+
+  <div class="footer-note">
+    Tài liệu nội bộ của nhóm · Cập nhật lần cuối 20/10/2026 · Repository:
+    github.com/Minh-lab/document-management
+  </div>
+</div>
+
+</body>
+</html>

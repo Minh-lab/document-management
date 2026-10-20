@@ -52,4 +52,6 @@ Quy ước commit: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`.
 
 ## Tài liệu
 
-Xem thư mục [`docs/`](docs) và các báo cáo trong `code/` (`PROJECT_REPORT.md`, `TEST_PLAN.md`).
+- [`docs/HUONG_DAN_TRIEN_KHAI.pdf`](docs/HUONG_DAN_TRIEN_KHAI.pdf) — hướng dẫn clone, thiết lập Firebase + Supabase và chạy app (dành cho thành viên mới)
+- [`docs/KE_HOACH_PHAN_CONG.md`](docs/KE_HOACH_PHAN_CONG.md) — phân công công việc nhóm
+- Các báo cáo khác trong `code/` (`PROJECT_REPORT.md`, `TEST_PLAN.md`)
