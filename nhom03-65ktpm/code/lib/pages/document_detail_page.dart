@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../colors.dart';
 import '../functions.dart';
+import '../services/supabase_service.dart';
 import '../struct/document_model.dart';
 import '../utils/responsive.dart';
 import '../widgets/confirm_dialog.dart';
@@ -32,11 +33,29 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     _load();
   }
 
+  /// Kiểm tra xem user có quyền xem tài liệu không
+  Future<bool> _hasDocumentPermission() async {
+    if (currentUserId.isEmpty) return false;
+    final permission = await supabaseService.getUserPermission(
+      widget.documentId,
+      currentUserId,
+    );
+    // Owner và editor có quyền xem, viewer cũng có quyền xem
+    return permission != null &&
+        (permission == PermissionRole.owner ||
+            permission == PermissionRole.editor ||
+            permission == PermissionRole.viewer);
+  }
+
   Future<void> _load() async {
     setState(() {
       _isLoading = true;
       _error = null;
     });
+
+    // Kiểm tra quyền trước khi tải
+    final hasPermission = await _hasDocumentPermission();
+    if (!hasPermission && !mounted) return;
 
     try {
       final document = await getDocumentById(widget.documentId);
@@ -55,6 +74,24 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
   }
 
   Future<void> _edit() async {
+    if (currentUserId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bạn cần đăng nhập để chỉnh sửa')),
+      );
+      return;
+    }
+    final permission = await supabaseService.getUserPermission(
+      widget.documentId,
+      currentUserId,
+    );
+    if (permission != PermissionRole.owner &&
+        permission != PermissionRole.editor) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bạn không có quyền chỉnh sửa tài liệu này')),
+      );
+      return;
+    }
+
     final document = _document;
     if (document == null) return;
 
@@ -68,6 +105,23 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
   }
 
   Future<void> _delete() async {
+    if (currentUserId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bạn cần đăng nhập để xóa')),
+      );
+      return;
+    }
+    final permission = await supabaseService.getUserPermission(
+      widget.documentId,
+      currentUserId,
+    );
+    if (permission != PermissionRole.owner) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chỉ chủ sở hữu tài liệu mới có quyền xóa')),
+      );
+      return;
+    }
+
     final document = _document;
     if (document == null) return;
 
@@ -105,6 +159,25 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
   }
 
   Future<void> _openFile() async {
+    if (currentUserId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bạn cần đăng nhập để xem tài liệu')),
+      );
+      return;
+    }
+    final permission = await supabaseService.getUserPermission(
+      widget.documentId,
+      currentUserId,
+    );
+    if (permission != PermissionRole.owner &&
+        permission != PermissionRole.editor &&
+        permission != PermissionRole.viewer) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bạn không có quyền xem tài liệu này')),
+      );
+      return;
+    }
+
     final document = _document;
     final url = document?.openUrl;
     if (document == null || url == null || url.isEmpty) {

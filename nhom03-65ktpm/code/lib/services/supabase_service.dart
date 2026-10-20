@@ -161,7 +161,7 @@ class SupabaseService {
   }) async {
     final now = DateTime.now().toIso8601String();
 
-    final response = await _client
+    final docResponse = await _client
         .from(SupabaseConfig.documentsTable)
         .insert({
           'title': title,
@@ -174,24 +174,29 @@ class SupabaseService {
           'created_at': now,
           'updated_at': now,
         })
-        .select('''
-          *,
-          categories!inner(name)
-        ''')
+        .select()
         .single();
 
-    final category = response['categories'] as Map<String, dynamic>;
+    // Tự động tạo quyền owner cho người tạo tài liệu
+    await _client.from(SupabaseConfig.permissionsTable).insert({
+      'document_id': docResponse['id'] as int,
+      'user_id': userId,
+      'role': 'owner',
+      'granted_by': userId,
+    });
+
+    final category = docResponse['categories'] as Map<String, dynamic>;
     return DocumentModel(
-      id: response['id'] as int,
-      title: response['title'] as String,
-      description: response['description'] as String?,
-      filePath: response['file_path'] as String?,
-      fileUrl: response['file_url'] as String?,
-      storagePath: response['storage_path'] as String?,
+      id: docResponse['id'] as int,
+      title: docResponse['title'] as String,
+      description: docResponse['description'] as String?,
+      filePath: docResponse['file_path'] as String?,
+      fileUrl: docResponse['file_url'] as String?,
+      storagePath: docResponse['storage_path'] as String?,
       categoryName: category['name'] as String,
-      categoryId: response['category_id'] as int,
-      createdAt: DateTime.parse(response['created_at'] as String),
-      updatedAt: DateTime.parse(response['updated_at'] as String),
+      categoryId: docResponse['category_id'] as int,
+      createdAt: DateTime.parse(docResponse['created_at'] as String),
+      updatedAt: DateTime.parse(docResponse['updated_at'] as String),
     );
   }
 
