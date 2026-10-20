@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/notification_bell_button.dart';
 import '../widgets/responsive_scaffold.dart';
 import '../widgets/user_menu_button.dart';
 import 'document_list_page.dart';
@@ -56,6 +57,7 @@ class _AppShellState extends State<AppShell> {
         setState(() => _selectedIndex = index);
       },
       actions: [
+        const NotificationBellButton(),
         UserMenuButton(
           onOpenSettings: () => setState(() => _selectedIndex = 2),
         ),

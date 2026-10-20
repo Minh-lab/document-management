@@ -4,6 +4,7 @@ import '../struct/category_model.dart';
 import '../struct/document_model.dart';
 import '../struct/user_model.dart';
 import '../struct/permission_model.dart';
+import '../struct/notification_model.dart';
 import '../config/supabase_config.dart';
 
 class SupabaseService {
@@ -261,6 +262,93 @@ class SupabaseService {
 
   void unsubscribe(RealtimeChannel channel) {
     _client.removeChannel(channel);
+  }
+
+  // ==================== NOTIFICATIONS ====================
+
+  /// Lấy danh sách thông báo của một người dùng, mới nhất trước.
+  Future<List<NotificationModel>> getNotifications({
+    required String userId,
+    int limit = 50,
+  }) async {
+    final response = await _client
+        .from(SupabaseConfig.notificationsTable)
+        .select()
+        .filter('user_id', 'eq', userId)
+        .order('created_at', ascending: false)
+        .limit(limit);
+
+    return (response as List)
+        .map((json) => NotificationModel.fromJson(json as Map<String, dynamic>))
+        .toList();
+  }
+
+  /// Đếm số thông báo chưa đọc để hiển thị badge.
+  Future<int> getUnreadNotificationCount({required String userId}) async {
+    final response = await _client
+        .from(SupabaseConfig.notificationsTable)
+        .select('id')
+        .filter('user_id', 'eq', userId)
+        .filter('is_read', 'eq', false);
+
+    return (response as List).length;
+  }
+
+  /// Đánh dấu một thông báo đã đọc.
+  Future<void> markNotificationRead(int id) async {
+    await _client
+        .from(SupabaseConfig.notificationsTable)
+        .update({'is_read': true})
+        .eq('id', id);
+  }
+
+  /// Đánh dấu toàn bộ thông báo của người dùng đã đọc.
+  Future<void> markAllNotificationsRead(String userId) async {
+    await _client
+        .from(SupabaseConfig.notificationsTable)
+        .update({'is_read': true})
+        .eq('user_id', userId)
+        .eq('is_read', false);
+  }
+
+  /// Tạo thông báo mới cho một người dùng.
+  Future<void> createNotification({
+    required String userId,
+    required String title,
+    String? body,
+    String type = 'system',
+    int? documentId,
+  }) async {
+    await _client.from(SupabaseConfig.notificationsTable).insert({
+      'user_id': userId,
+      'title': title,
+      'body': body,
+      'type': type,
+      'document_id': documentId,
+    });
+  }
+
+  /// Lắng nghe thông báo mới theo thời gian thực.
+  RealtimeChannel subscribeToNotifications({
+    required String userId,
+    required Function() onChanged,
+  }) {
+    return _client
+        .channel(
+          'notifications_changes_${DateTime.now().microsecondsSinceEpoch}',
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: SupabaseConfig.notificationsTable,
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (_) => onChanged(),
+        )
+        .subscribe();
   }
 
   // ==================== USERS ====================

@@ -2,8 +2,9 @@
 
 **Dự án:** Ứng dụng Quản lý Tài liệu Học tập
 **Kiến trúc:** Firebase (Authentication / Messaging) + Supabase (Database / Storage), giao diện Flutter đa nền tảng
-**Phiên bản tài liệu:** 2.1 — cập nhật 20/10/2026
+**Phiên bản tài liệu:** 2.2 — cập nhật 20/10/2026
 
+> Bản 2.2 bổ sung UC-15 cho trung tâm thông báo trong ứng dụng: chuông trên AppBar, badge chưa đọc, danh sách thông báo, đánh dấu đã đọc và mở nhanh tài liệu liên quan.
 > Bản 2.1 bổ sung use case cho các màn hình còn thiếu trong checklist giao diện: đăng nhập, xem chi tiết tài liệu, điều hướng responsive và các trạng thái loading / empty / error; đồng thời cập nhật bảng phân công theo kế hoạch mới.
 > Bản 2.0 bổ sung các use case cho tính năng mới (tag, vị trí vật lý, chia sẻ, mượn tài liệu, thông báo, gợi ý tài liệu) và chỉnh lại phần mô tả tầng dữ liệu cho khớp với mã nguồn hiện tại.
 > Phần mô tả cũ dùng SQLite/Drift cục bộ đã được thay bằng Supabase; `lib/database/` nay chỉ còn là lớp cache cục bộ chưa dùng đến.
@@ -41,6 +42,7 @@ graph LR
   U --> UC12[UC-12 Xem chi tiết tài liệu]
   U --> UC13[UC-13 Điều hướng & trạng thái giao diện]
   U --> UC14[UC-14 Đăng xuất]
+  U --> UC15[UC-15 Xem và quản lý thông báo]
 
   B[Người mượn] --> UC09
   B --> UC05
@@ -57,6 +59,7 @@ graph LR
   UC11 --> S
   UC12 --> S
   UC12 --> ST
+  UC15 --> S
   UC01 --> FA[Firebase Authentication]
   UC14 --> FA
 ```
@@ -81,6 +84,7 @@ graph LR
 | UC-12 | Xem chi tiết tài liệu | Sinh viên, Người được chia sẻ, Người mượn | #2 | Minh |
 | UC-13 | Điều hướng và trạng thái giao diện | Khách, Sinh viên, Người được chia sẻ, Người mượn | #2 | Minh |
 | UC-14 | Đăng xuất | Sinh viên | #1, #2 | Minh |
+| UC-15 | Xem và quản lý thông báo | Sinh viên, Người được chia sẻ, Người mượn | #4 | Đăng |
 
 > Phân công cập nhật theo bảng phân chia công việc ngày 20/10/2026: Minh phụ trách #1 và #2, Đạt #3 (tag), Quân #3 (bản đồ), Đăng #4 (mượn và chia sẻ), Hạnh #5 (recommendation). Hạng mục #6 (kiểm thử toàn diện và đóng gói) do cả nhóm thực hiện.
 
@@ -472,6 +476,35 @@ graph LR
 
 ---
 
+### UC-15. Xem và quản lý thông báo trong ứng dụng
+
+**Mô tả:** Người dùng xem các thông báo về tài liệu được chia sẻ, yêu cầu mượn và các sự kiện liên quan; đánh dấu đã đọc và mở nhanh tài liệu được nhắc đến.
+**Tác nhân:** Sinh viên, Người được chia sẻ, Người mượn.
+**Tiền điều kiện:** Người dùng đã đăng nhập; bảng `notifications` đã được tạo trong Supabase.
+**Hậu điều kiện:** Danh sách thông báo hiển thị mới nhất trước; trạng thái đã đọc được lưu; badge trên AppBar được cập nhật.
+
+**Chuỗi sự kiện chính:**
+1. Khi phát sinh sự kiện (chia sẻ tài liệu, yêu cầu mượn, duyệt hoặc từ chối), lớp logic ghi một bản ghi vào `notifications` với `user_id` của người nhận.
+2. AppBar hiển thị biểu tượng chuông kèm badge số thông báo chưa đọc.
+3. Người dùng chạm chuông; ứng dụng mở màn hình `Thông báo` và tải tối đa 50 bản ghi mới nhất.
+4. Mỗi thông báo hiển thị biểu tượng theo loại, tiêu đề, nội dung, thời gian tương đối và dấu chưa đọc.
+5. Người dùng chạm vào thông báo: hệ thống đánh dấu đã đọc; nếu có `document_id`, mở màn hình chi tiết tài liệu (UC-12).
+6. Người dùng chọn `Đọc tất cả` để đánh dấu toàn bộ thông báo của mình là đã đọc.
+7. Badge và danh sách được cập nhật theo thời gian thực qua Supabase Realtime.
+
+**Luồng thay thế:**
+- *15a. Chưa có thông báo:* Hiển thị trạng thái trống kèm hướng dẫn.
+- *15b. Kéo để làm mới:* Tải lại danh sách mà không rời màn hình.
+- *15c. Thông báo không gắn tài liệu:* Chỉ đánh dấu đã đọc, không điều hướng.
+
+**Ngoại lệ:**
+- *15d. Không tải được danh sách:* Hiển thị lỗi và nút `Thử lại`.
+- *15e. Bảng `notifications` chưa tồn tại:* Màn hình báo lỗi; quản trị viên chạy `supabase_notifications.sql` để tạo bảng.
+
+**Tiêu chí chấp nhận:** Badge hiển thị đúng số chưa đọc; thông báo mới xuất hiện trong vòng 10 giây; thao tác `Đọc tất cả` cập nhật toàn bộ danh sách; mở thông báo có tài liệu đưa đúng tới màn hình chi tiết.
+
+---
+
 ## 5. Ma trận truy vết use case ↔ checklist dự án
 
 | Hạng mục checklist | Use case liên quan | Người phụ trách | Minh chứng cần nộp |
@@ -479,9 +512,9 @@ graph LR
 | #1 Thiết kế kiến trúc và mô hình dữ liệu Firebase + Supabase | UC-01, UC-02, UC-03, UC-04, UC-14 | Minh | Sơ đồ kiến trúc, schema và RLS, Edge Function |
 | #2 Giao diện Flutter đa nền tảng, responsive | UC-05, UC-12, UC-13 và toàn bộ giao diện của các UC khác | Minh | Ảnh chụp 3 breakpoint, không lỗi overflow, đủ trạng thái loading/empty/error |
 | #3 Phân loại bằng Tag và quản lý vị trí vật lý | UC-06 (Đạt), UC-07 (Quân) | Đạt, Quân | Màn hình tag, lọc tag, bản đồ và vị trí đã lưu |
-| #4 Luồng yêu cầu mượn và chia sẻ quyền | UC-08, UC-09, UC-10 | Đăng | Bản ghi `permissions`, `borrow_requests`, thông báo |
+| #4 Luồng yêu cầu mượn và chia sẻ quyền | UC-08, UC-09, UC-10, UC-15 | Đăng | Bản ghi `permissions`, `borrow_requests`, thông báo trong ứng dụng và badge chưa đọc |
 | #5 Thuật toán Recommendation | UC-11 | Hạnh | Hàm chấm điểm, khối gợi ý kèm lý do, unit test |
-| #6 Kiểm thử toàn diện và đóng gói | Kiểm thử cho UC-01 → UC-14 | Cả nhóm | Test plan, kết quả test, APK + bản Web |
+| #6 Kiểm thử toàn diện và đóng gói | Kiểm thử cho UC-01 → UC-15 | Cả nhóm | Test plan, kết quả test, APK + bản Web |
 
 ---
 
@@ -506,11 +539,11 @@ graph LR
 
 ## 7. Thay đổi so với các bản trước
 
-| Nội dung | Bản 1.0 | Bản 2.0 | Bản 2.1 |
-|---|---|---|---|
-| Tầng dữ liệu | SQLite/Drift cục bộ | Supabase PostgREST + Storage, Firebase Auth | Giữ nguyên |
-| Tác nhân | Một tác nhân duy nhất | 6 tác nhân | Giữ nguyên, bổ sung quyền cho UC-12 |
-| Số use case | 4 | 11 | 14 |
-| Bổ sung | — | UC-01 đăng nhập, UC-06 tag, UC-07 vị trí, UC-08 chia sẻ, UC-09 mượn, UC-10 thông báo, UC-11 gợi ý | UC-12 xem chi tiết tài liệu, UC-13 điều hướng và trạng thái giao diện, UC-14 đăng xuất |
-| Chỉnh sửa | UC-02 → UC-04 mô tả theo Drift | Mô tả lại theo Supabase, bổ sung upload/xóa tệp, quyền hạn | UC-01 thêm đăng nhập Email/Mật khẩu và màn hình đăng nhập; UC-05 thêm trang chủ, lưới responsive, loading/empty/error |
-| Phân công | — | Minh, Quân, Đạt, Hạnh, Đăng | Cập nhật theo bảng phân chia ngày 20/10/2026: Minh #1–#2, Đạt #3 (tag), Quân #3 (bản đồ), Đăng #4, Hạnh #5 |
+| Nội dung | Bản 1.0 | Bản 2.0 | Bản 2.1 | Bản 2.2 |
+|---|---|---|---|---|
+| Tầng dữ liệu | SQLite/Drift cục bộ | Supabase PostgREST + Storage, Firebase Auth | Giữ nguyên | Thêm bảng `notifications` |
+| Tác nhân | Một tác nhân duy nhất | 6 tác nhân | Giữ nguyên, bổ sung quyền cho UC-12 | Giữ nguyên |
+| Số use case | 4 | 11 | 14 | 15 |
+| Bổ sung | — | UC-01 đăng nhập, UC-06 tag, UC-07 vị trí, UC-08 chia sẻ, UC-09 mượn, UC-10 thông báo, UC-11 gợi ý | UC-12 xem chi tiết tài liệu, UC-13 điều hướng và trạng thái giao diện, UC-14 đăng xuất | UC-15 xem và quản lý thông báo |
+| Chỉnh sửa | UC-02 → UC-04 mô tả theo Drift | Mô tả lại theo Supabase, bổ sung upload/xóa tệp, quyền hạn | UC-01 thêm đăng nhập Email/Mật khẩu và màn hình đăng nhập; UC-05 thêm trang chủ, lưới responsive, loading/empty/error | UC-13 bổ sung mục Cài đặt; AppBar có chuông thông báo |
+| Phân công | — | Minh, Quân, Đạt, Hạnh, Đăng | Cập nhật theo bảng phân chia ngày 20/10/2026: Minh #1–#2, Đạt #3 (tag), Quân #3 (bản đồ), Đăng #4, Hạnh #5 | UC-15 giao Đăng (#4) |
