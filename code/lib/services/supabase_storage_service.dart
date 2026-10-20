@@ -1,9 +1,11 @@
 import 'dart:typed_data';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
 class SupabaseStorageService {
-  static final SupabaseStorageService _instance = SupabaseStorageService._internal();
+  static final SupabaseStorageService _instance =
+      SupabaseStorageService._internal();
   factory SupabaseStorageService() => _instance;
   SupabaseStorageService._internal();
 
@@ -28,10 +30,7 @@ class SupabaseStorageService {
     try {
       // Validate input
       if (bytes.isEmpty) {
-        return UploadResult(
-          success: false,
-          error: 'File rỗng (0 bytes)',
-        );
+        return UploadResult(success: false, error: 'File rỗng (0 bytes)');
       }
 
       if (userId.isEmpty) {
@@ -41,7 +40,9 @@ class SupabaseStorageService {
         );
       }
 
-      print('📤 Uploading file to Supabase: $fileName, size: ${bytes.length} bytes, userId: $userId');
+      print(
+        '📤 Uploading file to Supabase: $fileName, size: ${bytes.length} bytes, userId: $userId',
+      );
 
       final storagePath = _getDocumentPath(userId, docId, fileName);
 
@@ -81,19 +82,14 @@ class SupabaseStorageService {
       );
     } catch (e) {
       print('❌ Unexpected error: $e');
-      return UploadResult(
-        success: false,
-        error: 'Lỗi không xác định: $e',
-      );
+      return UploadResult(success: false, error: 'Lỗi không xác định: $e');
     }
   }
 
   // Xóa file khỏi Supabase Storage
   Future<DeleteResult> deleteDocument(String storagePath) async {
     try {
-      await _client.storage
-          .from('documents')
-          .remove([storagePath]);
+      await _client.storage.from('documents').remove([storagePath]);
 
       return DeleteResult(success: true);
     } on StorageException catch (e) {
@@ -102,15 +98,15 @@ class SupabaseStorageService {
         error: _getStorageErrorMessage(e.message),
       );
     } catch (e) {
-      return DeleteResult(
-        success: false,
-        error: 'Lỗi không xác định: $e',
-      );
+      return DeleteResult(success: false, error: 'Lỗi không xác định: $e');
     }
   }
 
   // Lấy signed URL (cho bucket private)
-  Future<String?> getSignedUrl(String storagePath, {int expiresIn = 3600}) async {
+  Future<String?> getSignedUrl(
+    String storagePath, {
+    int expiresIn = 3600,
+  }) async {
     try {
       final url = await _client.storage
           .from('documents')

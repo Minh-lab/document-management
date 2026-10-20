@@ -2,9 +2,9 @@ class DocumentModel {
   final int id;
   final String title;
   final String? description;
-  final String? filePath;        // Local file path (for offline)
-  final String? fileUrl;         // Firebase Storage download URL
-  final String? storagePath;     // Firebase Storage path
+  final String? filePath; // Local file path (for offline)
+  final String? fileUrl; // Firebase Storage download URL
+  final String? storagePath; // Firebase Storage path
   final String categoryName;
   final int categoryId;
   final DateTime createdAt;
@@ -25,7 +25,8 @@ class DocumentModel {
 
   // Helper để lấy URL mở file (ưu tiên fileUrl từ Firebase, fallback filePath local)
   String? get openUrl => fileUrl ?? filePath;
-  
+
   // Kiểm tra có file đính kèm không
-  bool get hasAttachment => fileUrl != null || (filePath != null && filePath!.isNotEmpty);
+  bool get hasAttachment =>
+      fileUrl != null || (filePath != null && filePath!.isNotEmpty);
 }

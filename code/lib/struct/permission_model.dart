@@ -34,7 +34,7 @@ class PermissionModel {
     if (json['users'] != null) {
       user = UserModel.fromJson(json['users'] as Map<String, dynamic>);
     }
-    
+
     return PermissionModel(
       id: json['id'] as int,
       documentId: json['document_id'] as int,

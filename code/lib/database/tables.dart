@@ -1,4 +1,5 @@
 import 'dart:io';
+
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
@@ -33,16 +34,16 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (Migrator m) async {
-          await m.createAll();
-        },
-        onUpgrade: (Migrator m, int from, int to) async {
-          if (from == 1) {
-            // Tự động rebuild bảng để cập nhật filePath thành nullable
-            await m.alterTable(TableMigration(documents));
-          }
-        },
-      );
+    onCreate: (Migrator m) async {
+      await m.createAll();
+    },
+    onUpgrade: (Migrator m, int from, int to) async {
+      if (from == 1) {
+        // Tự động rebuild bảng để cập nhật filePath thành nullable
+        await m.alterTable(TableMigration(documents));
+      }
+    },
+  );
 }
 
 LazyDatabase _openConnection() {

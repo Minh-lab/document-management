@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../functions.dart';
 import '../struct/user_model.dart';
 import '../struct/permission_model.dart';
@@ -76,8 +77,10 @@ class _ShareDialogState extends State<ShareDialog> {
       final results = await searchUsers(query);
       // Lọc bỏ những user đã được chia sẻ
       final sharedUserIds = _currentShares.map((p) => p.userId).toSet();
-      final filtered = results.where((u) => !sharedUserIds.contains(u.id)).toList();
-      
+      final filtered = results
+          .where((u) => !sharedUserIds.contains(u.id))
+          .toList();
+
       if (mounted) {
         setState(() {
           _searchResults = filtered;
@@ -96,14 +99,14 @@ class _ShareDialogState extends State<ShareDialog> {
 
   Future<void> _addShare(UserModel user, PermissionRole role) async {
     setState(() => _isLoading = true);
-    
+
     try {
       await shareDocument(
         documentId: widget.documentId,
         userId: user.id,
         role: role,
       );
-      
+
       // Reload shares
       final shares = await getDocumentShares(widget.documentId);
       if (mounted) {
@@ -125,16 +128,19 @@ class _ShareDialogState extends State<ShareDialog> {
     }
   }
 
-  Future<void> _updateShare(PermissionModel permission, PermissionRole newRole) async {
+  Future<void> _updateShare(
+    PermissionModel permission,
+    PermissionRole newRole,
+  ) async {
     setState(() => _isLoading = true);
-    
+
     try {
       await updateShare(
         documentId: widget.documentId,
         userId: permission.userId,
         role: newRole,
       );
-      
+
       final shares = await getDocumentShares(widget.documentId);
       if (mounted) {
         setState(() {
@@ -155,10 +161,10 @@ class _ShareDialogState extends State<ShareDialog> {
 
   Future<void> _removeShare(String userId) async {
     setState(() => _isLoading = true);
-    
+
     try {
       await removeShare(widget.documentId, userId);
-      
+
       final shares = await getDocumentShares(widget.documentId);
       if (mounted) {
         setState(() {
@@ -212,16 +218,22 @@ class _ShareDialogState extends State<ShareDialog> {
               onChanged: _searchUsers,
               onSubmitted: _searchUsers,
             ),
-            
+
             if (_error != null) ...[
               const SizedBox(height: 8),
-              Text(_error!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+              Text(
+                _error!,
+                style: const TextStyle(color: Colors.red, fontSize: 12),
+              ),
             ],
-            
+
             // Search results
             if (_searchResults.isNotEmpty) ...[
               const SizedBox(height: 16),
-              const Text('Kết quả tìm kiếm:', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                'Kết quả tìm kiếm:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 8),
               Expanded(
                 child: ListView.builder(
@@ -234,7 +246,7 @@ class _ShareDialogState extends State<ShareDialog> {
                 ),
               ),
             ],
-            
+
             // Current shares
             if (_isLoadingShares && _currentShares.isEmpty) ...[
               const SizedBox(height: 32),
@@ -244,9 +256,15 @@ class _ShareDialogState extends State<ShareDialog> {
               const SizedBox(height: 16),
               Row(
                 children: [
-                  const Text('Đã chia sẻ:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const Text(
+                    'Đã chia sẻ:',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                   const Spacer(),
-                  Text('${_currentShares.length} người', style: TextStyle(color: AppColors.textSecondary)),
+                  Text(
+                    '${_currentShares.length} người',
+                    style: TextStyle(color: AppColors.textSecondary),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -283,38 +301,49 @@ class _ShareDialogState extends State<ShareDialog> {
   Widget _buildAddUserTile(UserModel user) {
     return ListTile(
       leading: CircleAvatar(
-        backgroundImage: user.avatarUrl != null ? NetworkImage(user.avatarUrl!) : null,
-        child: user.avatarUrl == null ? Text(user.displayNameOrEmail[0].toUpperCase()) : null,
+        backgroundImage: user.avatarUrl != null
+            ? NetworkImage(user.avatarUrl!)
+            : null,
+        child: user.avatarUrl == null
+            ? Text(user.displayNameOrEmail[0].toUpperCase())
+            : null,
       ),
       title: Text(user.displayNameOrEmail),
       subtitle: Text(user.email ?? ''),
       trailing: PopupMenuButton<PermissionRole>(
         onSelected: (role) => _addShare(user, role),
         itemBuilder: (context) => PermissionRole.values.map((role) {
-          return PopupMenuItem(
-            value: role,
-            child: Text(role.label),
-          );
+          return PopupMenuItem(value: role, child: Text(role.label));
         }).toList(),
         child: _isLoading
-            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
             : const Text('Chia sẻ', style: TextStyle(color: AppColors.primary)),
       ),
     );
   }
 
   Widget _buildShareTile(PermissionModel permission) {
-    final user = permission.user ?? UserModel(
-      id: permission.userId,
-      displayName: permission.userId.substring(0, 8),
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    );
-    
+    final user =
+        permission.user ??
+        UserModel(
+          id: permission.userId,
+          displayName: permission.userId.substring(0, 8),
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+
     return ListTile(
       leading: CircleAvatar(
-        backgroundImage: user.avatarUrl != null ? NetworkImage(user.avatarUrl!) : null,
-        child: user.avatarUrl == null ? Text(user.displayNameOrEmail[0].toUpperCase()) : null,
+        backgroundImage: user.avatarUrl != null
+            ? NetworkImage(user.avatarUrl!)
+            : null,
+        child: user.avatarUrl == null
+            ? Text(user.displayNameOrEmail[0].toUpperCase())
+            : null,
       ),
       title: Text(user.displayNameOrEmail),
       subtitle: Text(user.email ?? ''),
@@ -325,10 +354,7 @@ class _ShareDialogState extends State<ShareDialog> {
             value: permission.role,
             underline: const SizedBox(),
             items: PermissionRole.values.map((role) {
-              return DropdownMenuItem(
-                value: role,
-                child: Text(role.label),
-              );
+              return DropdownMenuItem(value: role, child: Text(role.label));
             }).toList(),
             onChanged: (role) {
               if (role != null && role != permission.role) {

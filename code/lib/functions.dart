@@ -1,9 +1,11 @@
 import 'dart:convert';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'services/supabase_service.dart';
 import 'services/supabase_storage_service.dart';
 import 'struct/category_model.dart';
@@ -15,61 +17,55 @@ final supabaseService = SupabaseService();
 final storageService = SupabaseStorageService();
 final googleSignIn = GoogleSignIn();
 
-/// Khởi tạo Supabase và Firebase
+/// Khởi tạo phiên làm việc sau khi người dùng đã đăng nhập.
+/// Không tự đăng nhập ẩn danh để màn hình đăng nhập luôn hiển thị khi chưa có phiên.
 Future<void> initializeServices() async {
-  // Supabase đã được initialize ở main.dart
-  // Chỉ cần ensure user signed in và seed categories
-  
-  // Đảm bảo user đã đăng nhập và sync với Supabase
-  await _ensureUserSignedInAndSyncSupabase();
-  
-  // Seed default categories
+  final user = firebase_auth.FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  await _syncFirebaseUserToSupabase(user);
   await supabaseService.seedDefaultCategories();
 }
 
-/// Đảm bảo user đã đăng nhập Firebase và sync session với Supabase
-Future<firebase_auth.User> _ensureUserSignedInAndSyncSupabase() async {
-  final auth = firebase_auth.FirebaseAuth.instance;
-  
-  // Đảm bảo Firebase user đã đăng nhập
-  if (auth.currentUser == null) {
-    final credential = await auth.signInAnonymously();
-    // Sync với Supabase
-    await _syncFirebaseUserToSupabase(credential.user!);
-    return credential.user!;
+/// Đồng bộ lại phiên Supabase từ Firebase (dùng sau khi đăng nhập/đăng ký).
+Future<void> syncSessionWithSupabase() async {
+  final user = firebase_auth.FirebaseAuth.instance.currentUser;
+  if (user == null) {
+    throw Exception('Chưa có người dùng đăng nhập');
   }
-  
-  // Sync user hiện tại với Supabase
-  await _syncFirebaseUserToSupabase(auth.currentUser!);
-  return auth.currentUser!;
+  await _syncFirebaseUserToSupabase(user);
 }
 
 /// Sync Firebase user với Supabase Auth (gọi Edge Function để verify Firebase token và tạo Supabase JWT)
-Future<void> _syncFirebaseUserToSupabase(firebase_auth.User firebaseUser) async {
+Future<void> _syncFirebaseUserToSupabase(
+  firebase_auth.User firebaseUser,
+) async {
   try {
     print('🔄 Starting sync of Firebase user: ${firebaseUser.uid}');
-    
+
     // Lấy Firebase ID token
     final idToken = await firebaseUser.getIdToken(true);
     print('🔑 Got Firebase ID token for user: ${firebaseUser.uid}');
-    
+
     // Gọi Supabase Edge Function để verify Firebase token và lấy Supabase JWT
     final response = await http.post(
-      Uri.parse('https://lwebnjcszbldlqwjrcan.supabase.co/functions/v1/verify-firebase-token'),
+      Uri.parse(
+        'https://lwebnjcszbldlqwjrcan.supabase.co/functions/v1/verify-firebase-token',
+      ),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $idToken',
       },
     );
-    
+
     print('📡 Edge Function response status: ${response.statusCode}');
     print('📡 Edge Function response body: ${response.body}');
-    
+
     if (response.statusCode == 200) {
       final data = json.decode(response.body);
       print('📦 Parsed response data: $data');
       final supabaseToken = data['token'] as String?;
-      
+
       if (supabaseToken != null) {
         // Set Supabase session với token từ Edge Function
         await Supabase.instance.client.auth.setSession(supabaseToken);
@@ -87,31 +83,103 @@ Future<void> _syncFirebaseUserToSupabase(firebase_auth.User firebaseUser) async 
   }
 }
 
+/// Đăng nhập bằng Email/Mật khẩu
+Future<firebase_auth.UserCredential> signInWithEmail({
+  required String email,
+  required String password,
+}) async {
+  final credential = await firebase_auth.FirebaseAuth.instance
+      .signInWithEmailAndPassword(email: email.trim(), password: password);
+
+  if (credential.user != null) {
+    await _syncFirebaseUserToSupabase(credential.user!);
+  }
+  return credential;
+}
+
+/// Đăng ký tài khoản mới bằng Email/Mật khẩu
+Future<firebase_auth.UserCredential> registerWithEmail({
+  required String email,
+  required String password,
+  String? displayName,
+}) async {
+  final credential = await firebase_auth.FirebaseAuth.instance
+      .createUserWithEmailAndPassword(email: email.trim(), password: password);
+
+  final user = credential.user;
+  if (user != null) {
+    if (displayName != null && displayName.trim().isNotEmpty) {
+      await user.updateDisplayName(displayName.trim());
+      await user.reload();
+    }
+    await _syncFirebaseUserToSupabase(user);
+  }
+  return credential;
+}
+
+/// Đăng nhập ẩn danh để dùng thử
+Future<void> signInAsGuest() async {
+  final credential = await firebase_auth.FirebaseAuth.instance
+      .signInAnonymously();
+  if (credential.user != null) {
+    await _syncFirebaseUserToSupabase(credential.user!);
+  }
+}
+
 /// Đăng nhập bằng Google
 Future<firebase_auth.UserCredential?> signInWithGoogle() async {
-  try {
-    final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
-    if (googleUser == null) return null; // User cancelled
-    
-    final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-    
-    final credential = firebase_auth.GoogleAuthProvider.credential(
-      accessToken: googleAuth.accessToken,
-      idToken: googleAuth.idToken,
-    );
-    
-    final userCredential = await firebase_auth.FirebaseAuth.instance.signInWithCredential(credential);
-    
-    // Sync Google user với Supabase
-    if (userCredential.user != null) {
-      await _syncFirebaseUserToSupabase(userCredential.user!);
-    }
-    
-    return userCredential;
-  } catch (e) {
-    print('Google Sign-In error: $e');
-    return null;
+  final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+  if (googleUser == null) return null; // Người dùng hủy
+
+  final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+
+  final credential = firebase_auth.GoogleAuthProvider.credential(
+    accessToken: googleAuth.accessToken,
+    idToken: googleAuth.idToken,
+  );
+
+  final userCredential = await firebase_auth.FirebaseAuth.instance
+      .signInWithCredential(credential);
+
+  // Sync Google user với Supabase
+  if (userCredential.user != null) {
+    await _syncFirebaseUserToSupabase(userCredential.user!);
   }
+
+  return userCredential;
+}
+
+/// Chuyển lỗi Firebase thành thông báo tiếng Việt dễ hiểu.
+String friendlyAuthError(Object error) {
+  if (error is firebase_auth.FirebaseAuthException) {
+    switch (error.code) {
+      case 'invalid-email':
+        return 'Email không hợp lệ.';
+      case 'user-disabled':
+        return 'Tài khoản đã bị vô hiệu hóa.';
+      case 'user-not-found':
+      case 'wrong-password':
+      case 'invalid-credential':
+        return 'Email hoặc mật khẩu không đúng.';
+      case 'email-already-in-use':
+        return 'Email này đã được đăng ký. Hãy đăng nhập hoặc dùng email khác.';
+      case 'weak-password':
+        return 'Mật khẩu quá yếu. Vui lòng dùng ít nhất 6 ký tự.';
+      case 'missing-password':
+        return 'Vui lòng nhập mật khẩu.';
+      case 'operation-not-allowed':
+        return 'Phương thức đăng nhập này chưa được bật trong Firebase.';
+      case 'network-request-failed':
+        return 'Không có kết nối mạng. Vui lòng kiểm tra và thử lại.';
+      case 'too-many-requests':
+        return 'Bạn đã thử quá nhiều lần. Vui lòng đợi một lát rồi thử lại.';
+      default:
+        return error.message ?? 'Đăng nhập thất bại. Vui lòng thử lại.';
+    }
+  }
+
+  final raw = error.toString();
+  return raw.replaceFirst('Exception: ', '');
 }
 
 /// Đăng xuất
@@ -121,11 +189,16 @@ Future<void> signOut() async {
   await Supabase.instance.client.auth.signOut();
 }
 
+/// Người dùng Firebase hiện tại
+firebase_auth.User? get currentFirebaseUser =>
+    firebase_auth.FirebaseAuth.instance.currentUser;
+
 /// Lấy user ID hiện tại
-String get currentUserId => firebase_auth.FirebaseAuth.instance.currentUser?.uid ?? '';
+String get currentUserId => currentFirebaseUser?.uid ?? '';
 
 /// Lấy stream user auth state
-Stream<firebase_auth.User?> get authStateChanges => firebase_auth.FirebaseAuth.instance.authStateChanges();
+Stream<firebase_auth.User?> get authStateChanges =>
+    firebase_auth.FirebaseAuth.instance.authStateChanges();
 
 // ==================== CATEGORIES ====================
 
@@ -160,12 +233,12 @@ Future<DocumentModel> addDocument({
   String? filePath;
   String? fileUrl;
   String? storagePath;
-  
+
   // Upload file lên Firebase Storage nếu có
   if (file != null) {
     // Lấy bytes từ PlatformFile (hỗ trợ Android content:// URI)
     final bytes = await file.readAsBytes();
-    
+
     final uploadResult = await storageService.uploadDocument(
       bytes: bytes,
       userId: currentUserId,
@@ -175,7 +248,7 @@ Future<DocumentModel> addDocument({
         // Progress will be handled by UI via stream or callback
       },
     );
-    
+
     if (uploadResult.success) {
       fileUrl = uploadResult.downloadUrl;
       storagePath = uploadResult.storagePath;
@@ -183,7 +256,7 @@ Future<DocumentModel> addDocument({
       throw Exception('Upload file thất bại: ${uploadResult.error}');
     }
   }
-  
+
   // Lưu metadata vào Supabase (sẽ trả về document với ID thật)
   final document = await supabaseService.addDocument(
     title: title,
@@ -194,17 +267,17 @@ Future<DocumentModel> addDocument({
     categoryId: categoryId,
     userId: currentUserId,
   );
-  
+
   // Nếu có file, cần update storage path với docId thật
   if (file != null && storagePath != null) {
     final newStoragePath = storagePath.replaceFirst(
       RegExp(r'temp_\d+'),
       document.id.toString(),
     );
-    
+
     // Di chuyển file trong Firebase Storage (copy + delete)
     await _moveFileInStorage(storagePath, newStoragePath);
-    
+
     // Update document với storage path mới
     return await supabaseService.updateDocument(
       id: document.id,
@@ -216,7 +289,7 @@ Future<DocumentModel> addDocument({
       categoryId: categoryId,
     );
   }
-  
+
   return document;
 }
 
@@ -233,24 +306,24 @@ Future<DocumentModel> updateDocument({
   String? filePath;
   String? fileUrl = existingFileUrl;
   String? storagePath = existingStoragePath;
-  
+
   // Nếu có file mới, upload lên Firebase Storage
   if (file != null) {
     // Xóa file cũ nếu có
     if (existingStoragePath != null) {
       await storageService.deleteDocument(existingStoragePath);
     }
-    
+
     // Lấy bytes từ PlatformFile
     final bytes = await file.readAsBytes();
-    
+
     final uploadResult = await storageService.uploadDocument(
       bytes: bytes,
       userId: currentUserId,
       docId: id.toString(),
       fileName: file.name,
     );
-    
+
     if (uploadResult.success) {
       fileUrl = uploadResult.downloadUrl;
       storagePath = uploadResult.storagePath;
@@ -258,7 +331,7 @@ Future<DocumentModel> updateDocument({
       throw Exception('Upload file thất bại: ${uploadResult.error}');
     }
   }
-  
+
   return await supabaseService.updateDocument(
     id: id,
     title: title,
@@ -291,14 +364,14 @@ Future<void> _moveFileInStorage(String oldPath, String newPath) async {
   try {
     // Download from old path
     final bytes = await storageService.getFileBytes(oldPath);
-    
+
     if (bytes == null) {
       throw Exception('Failed to download file from $oldPath');
     }
-    
+
     // Upload to new path
     await storageService.uploadBytes(newPath, bytes);
-    
+
     // Delete old file
     await storageService.deleteDocument(oldPath);
   } catch (e) {
@@ -315,7 +388,7 @@ Future<UserModel> syncCurrentUser({
 }) async {
   final user = firebase_auth.FirebaseAuth.instance.currentUser;
   if (user == null) throw Exception('User not authenticated');
-  
+
   return await supabaseService.upsertUser(
     id: user.uid,
     email: user.email,

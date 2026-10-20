@@ -1,0 +1,53 @@
+import 'package:flutter/material.dart';
+
+import '../widgets/responsive_scaffold.dart';
+import '../widgets/user_menu_button.dart';
+import 'document_list_page.dart';
+import 'home_page.dart';
+
+/// Khung chính sau khi đăng nhập, chứa các tab và điều hướng thích ứng.
+class AppShell extends StatefulWidget {
+  const AppShell({super.key});
+
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  int _selectedIndex = 0;
+
+  static const _destinations = [
+    AppDestination(
+      icon: Icons.home_outlined,
+      selectedIcon: Icons.home_rounded,
+      label: 'Trang chủ',
+    ),
+    AppDestination(
+      icon: Icons.folder_outlined,
+      selectedIcon: Icons.folder_rounded,
+      label: 'Tài liệu',
+    ),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return ResponsiveScaffold(
+      title: _selectedIndex == 0 ? 'Trang chủ' : 'Tài liệu của tôi',
+      destinations: _destinations,
+      selectedIndex: _selectedIndex,
+      onDestinationSelected: (index) {
+        setState(() => _selectedIndex = index);
+      },
+      actions: const [UserMenuButton()],
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          HomePage(
+            onViewAllDocuments: () => setState(() => _selectedIndex = 1),
+          ),
+          const DocumentListPage(),
+        ],
+      ),
+    );
+  }
+}

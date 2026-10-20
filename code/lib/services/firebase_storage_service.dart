@@ -1,9 +1,11 @@
 import 'dart:typed_data';
+
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:uuid/uuid.dart';
 
 class FirebaseStorageService {
-  static final FirebaseStorageService _instance = FirebaseStorageService._internal();
+  static final FirebaseStorageService _instance =
+      FirebaseStorageService._internal();
   factory FirebaseStorageService() => _instance;
   FirebaseStorageService._internal();
 
@@ -28,25 +30,24 @@ class FirebaseStorageService {
     try {
       // Validate input
       if (bytes.isEmpty) {
-        return UploadResult(
-          success: false,
-          error: 'File rỗng (0 bytes)',
-        );
+        return UploadResult(success: false, error: 'File rỗng (0 bytes)');
       }
-      
+
       if (userId.isEmpty) {
         return UploadResult(
           success: false,
           error: 'User ID rỗng - chưa đăng nhập',
         );
       }
-      
+
       // Debug logging
-      print('📤 Uploading file: $fileName, size: ${bytes.length} bytes, userId: $userId');
-      
+      print(
+        '📤 Uploading file: $fileName, size: ${bytes.length} bytes, userId: $userId',
+      );
+
       final storagePath = _getDocumentPath(userId, docId, fileName);
       final ref = _storage.ref().child(storagePath);
-      
+
       // Upload bytes trực tiếp với metadata
       final metadata = SettableMetadata(
         contentType: 'application/pdf',
@@ -56,39 +57,42 @@ class FirebaseStorageService {
           'originalName': fileName,
         },
       );
-      
+
       final uploadTask = ref.putData(bytes, metadata);
-      
+
       // Lắng nghe tiến trình upload
       uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
         final progress = snapshot.bytesTransferred / snapshot.totalBytes;
         onProgress?.call(progress);
         print('📤 Upload progress: ${(progress * 100).toStringAsFixed(1)}%');
       });
-      
+
       // Wait for upload to complete
       final snapshot = await uploadTask;
-      
+
       // Verify upload completed successfully
-      print('✅ Upload completed, state: ${snapshot.state}, totalBytes: ${snapshot.totalBytes}');
-      
+      print(
+        '✅ Upload completed, state: ${snapshot.state}, totalBytes: ${snapshot.totalBytes}',
+      );
+
       if (snapshot.state != TaskState.success) {
         return UploadResult(
           success: false,
           error: 'Upload không thành công: state=${snapshot.state}',
         );
       }
-      
+
       if (snapshot.totalBytes != bytes.length) {
         return UploadResult(
           success: false,
-          error: 'Kích thước file không khớp: expected=${bytes.length}, got=${snapshot.totalBytes}',
+          error:
+              'Kích thước file không khớp: expected=${bytes.length}, got=${snapshot.totalBytes}',
         );
       }
-      
+
       final downloadUrl = await snapshot.ref.getDownloadURL();
       print('🔗 Download URL: $downloadUrl');
-      
+
       return UploadResult(
         success: true,
         downloadUrl: downloadUrl,
@@ -97,16 +101,10 @@ class FirebaseStorageService {
       );
     } on FirebaseException catch (e) {
       print('❌ FirebaseException: ${e.code} - ${e.message}');
-      return UploadResult(
-        success: false,
-        error: _getErrorMessage(e.code),
-      );
+      return UploadResult(success: false, error: _getErrorMessage(e.code));
     } catch (e) {
       print('❌ Unexpected error: $e');
-      return UploadResult(
-        success: false,
-        error: 'Lỗi không xác định: $e',
-      );
+      return UploadResult(success: false, error: 'Lỗi không xác định: $e');
     }
   }
 
@@ -117,15 +115,9 @@ class FirebaseStorageService {
       await ref.delete();
       return DeleteResult(success: true);
     } on FirebaseException catch (e) {
-      return DeleteResult(
-        success: false,
-        error: _getErrorMessage(e.code),
-      );
+      return DeleteResult(success: false, error: _getErrorMessage(e.code));
     } catch (e) {
-      return DeleteResult(
-        success: false,
-        error: 'Lỗi không xác định: $e',
-      );
+      return DeleteResult(success: false, error: 'Lỗi không xác định: $e');
     }
   }
 
