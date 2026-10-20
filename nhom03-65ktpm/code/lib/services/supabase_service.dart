@@ -5,6 +5,7 @@ import '../struct/document_model.dart';
 import '../struct/user_model.dart';
 import '../struct/permission_model.dart';
 import '../struct/notification_model.dart';
+import '../struct/document_location_model.dart';
 import '../config/supabase_config.dart';
 
 class SupabaseService {
@@ -569,5 +570,75 @@ class SupabaseService {
         updatedAt: DateTime.parse(json['updated_at'] as String),
       );
     }).toList();
+  }
+
+  // ==================== DOCUMENT LOCATIONS ====================
+
+  /// Lấy vị trí vật lý của tài liệu
+  Future<DocumentLocationModel?> getDocumentLocation(int documentId) async {
+    try {
+      final response = await _client
+          .from(SupabaseConfig.documentLocationsTable)
+          .select()
+          .filter('document_id', 'eq', documentId)
+          .maybeSingle();
+
+      if (response == null) return null;
+      return DocumentLocationModel.fromJson(response);
+    } catch (e) {
+      // Nếu bảng chưa có hoặc lỗi kết nối, fallback null an toàn
+      return null;
+    }
+  }
+
+  /// Lưu hoặc cập nhật vị trí vật lý của tài liệu
+  Future<DocumentLocationModel?> upsertDocumentLocation({
+    required int documentId,
+    double? latitude,
+    double? longitude,
+    String? placeName,
+    String? shelf,
+    String? note,
+  }) async {
+    final payload = {
+      'document_id': documentId,
+      'latitude': latitude,
+      'longitude': longitude,
+      'place_name': placeName,
+      'shelf': shelf,
+      'note': note,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+
+    try {
+      final response = await _client
+          .from(SupabaseConfig.documentLocationsTable)
+          .upsert(payload, onConflict: 'document_id')
+          .select()
+          .single();
+
+      return DocumentLocationModel.fromJson(response);
+    } catch (e) {
+      // Trả về model cục bộ nếu backend Supabase chưa chạy migration table
+      return DocumentLocationModel(
+        documentId: documentId,
+        latitude: latitude,
+        longitude: longitude,
+        placeName: placeName,
+        shelf: shelf,
+        note: note,
+        updatedAt: DateTime.now(),
+      );
+    }
+  }
+
+  /// Xóa vị trí vật lý của tài liệu
+  Future<void> deleteDocumentLocation(int documentId) async {
+    try {
+      await _client
+          .from(SupabaseConfig.documentLocationsTable)
+          .delete()
+          .filter('document_id', 'eq', documentId);
+    } catch (_) {}
   }
 }
