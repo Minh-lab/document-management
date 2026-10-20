@@ -1,0 +1,11 @@
+# Flutter / Dart build artifacts
+code/build/
+code/.dart_tool/
+code/.flutter-plugins-dependencies
+code/coverage/
+code/.playwright-mcp/
+
+# Local env & logs
+*.log
+.env
+.env.*

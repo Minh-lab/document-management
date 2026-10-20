@@ -122,15 +122,20 @@ class _LoginPageState extends State<LoginPage> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 1120),
               child: context.isExpanded
-                  ? SizedBox(
-                      height: 640,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const Expanded(flex: 5, child: _BrandPanel()),
-                          const SizedBox(width: 40),
-                          Expanded(flex: 4, child: Center(child: _buildCard())),
-                        ],
+                  ? ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 620),
+                      child: IntrinsicHeight(
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Expanded(flex: 5, child: _BrandPanel()),
+                            const SizedBox(width: 40),
+                            Expanded(
+                              flex: 4,
+                              child: Center(child: _buildCard()),
+                            ),
+                          ],
+                        ),
                       ),
                     )
                   : Center(

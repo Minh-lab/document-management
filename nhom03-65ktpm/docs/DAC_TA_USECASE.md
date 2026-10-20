@@ -429,10 +429,10 @@ graph LR
 1. Người dùng mở ứng dụng trên điện thoại hoặc trình duyệt.
 2. Hệ thống xác định breakpoint: `compact` (< 600px), `medium` (600–1024px), `expanded` (≥ 1024px).
 3. Giao diện dựng khung điều hướng tương ứng: bottom navigation trên mobile, navigation rail trên tablet, rail kèm vùng nội dung rộng trên Web.
-4. Người dùng chọn mục điều hướng (Trang chủ, Tài liệu, Yêu cầu, Gợi ý, Tài khoản) hoặc mở chi tiết từ danh sách.
+4. Người dùng chọn mục điều hướng (Trang chủ, Tài liệu) hoặc mở chi tiết tài liệu từ danh sách; menu tài khoản ở góc phải cho phép đăng xuất.
 5. Trong khi tải dữ liệu, giao diện hiển thị loading indicator hoặc skeleton.
 6. Khi không có dữ liệu, giao diện hiển thị Empty Component kèm hướng dẫn; khi lỗi, hiển thị thông báo và nút `Thử lại`.
-7. Trên Web, địa chỉ URL phản ánh màn hình hiện tại để có thể mở lại hoặc chia sẻ liên kết.
+7. Trên Web, nút quay lại của ứng dụng đưa người dùng về màn hình trước đó và giữ nguyên bộ lọc đang áp dụng.
 
 **Luồng thay thế:**
 - *13a. Màn hình hẹp:* Nội dung một cột, form và danh sách cuộn dọc.
@@ -441,7 +441,7 @@ graph LR
 
 **Ngoại lệ:**
 - *13d. Mất mạng:* Hiển thị trạng thái lỗi có thể thử lại, không hiển thị màn hình trắng.
-- *13e. Điều hướng tới màn hình không tồn tại:* Hiển thị trang "Không tìm thấy" kèm nút quay về trang chủ.
+- *13e. Điều hướng tới tài liệu không tồn tại:* Hiển thị trạng thái "Tài liệu không tồn tại" kèm nút quay lại danh sách.
 
 **Tiêu chí chấp nhận:** Không tràn layout tại 360px, 768px và 1440px; loading/empty/error xuất hiện đúng thời điểm; điều hướng không làm mất ngữ cảnh tìm kiếm; nút Back hoạt động đúng trên cả Mobile và Web.
 

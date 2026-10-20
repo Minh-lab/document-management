@@ -144,20 +144,29 @@ class _Avatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final photoUrl = user.photoURL;
-    return CircleAvatar(
+    final fallback = CircleAvatar(
       radius: radius,
       backgroundColor: AppColors.primaryLight,
-      backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-      child: photoUrl == null
-          ? Text(
-              initial,
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                color: AppColors.primaryDark,
-                fontSize: radius * 0.9,
-              ),
-            )
-          : null,
+      child: Text(
+        initial,
+        style: TextStyle(
+          fontWeight: FontWeight.w700,
+          color: AppColors.primaryDark,
+          fontSize: radius * 0.9,
+        ),
+      ),
+    );
+
+    if (photoUrl == null || photoUrl.isEmpty) return fallback;
+
+    return ClipOval(
+      child: Image.network(
+        photoUrl,
+        width: radius * 2,
+        height: radius * 2,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => fallback,
+      ),
     );
   }
 }
