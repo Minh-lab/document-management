@@ -1,0 +1,21 @@
+# Hệ điều hành / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.iml
+
+# Flutter / Dart (chi tiết xem thêm code/.gitignore)
+code/build/
+code/.dart_tool/
+code/.flutter-plugins-dependencies
+code/.playwright-mcp/
+code/coverage/
+*.log
+
+# Tệp bí mật cục bộ
+.env
+.env.*
+*.keystore
+*.jks
+key.properties

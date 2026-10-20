@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "814406460575",
+    "project_id": "document-management-f7883",
+    "storage_bucket": "document-management-f7883.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:814406460575:android:d5fbafc2e2af6bdd6daeaa",
+        "android_client_info": {
+          "package_name": "com.example.code"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "814406460575-488qs25e4lrt8j4q8e1pmfr5lg9cudjq.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.code",
+            "certificate_hash": "1e2aea5da428308617337587e79543d09681977a"
+          }
+        },
+        {
+          "client_id": "814406460575-0je42jnn1lr74lj2ah4s20ppttftobqe.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB8-swkXHCziZO5DKFSeJnSoJF5u8eIJbM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "814406460575-0je42jnn1lr74lj2ah4s20ppttftobqe.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
