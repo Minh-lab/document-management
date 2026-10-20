@@ -1,259 +1,122 @@
 # KẾ HOẠCH PHÂN CÔNG CÔNG VIỆC
 
 **Dự án:** Ứng dụng Quản lý Tài liệu Học tập (Flutter + Firebase + Supabase)
-**Nhóm:** 5 thành viên — Minh, Đạt, Hạnh, Quân, Đăng
-**Thời gian:** 20/10 → **24/10** (5 ngày, ~22 ngày công)
+**Nhóm:** Minh, Đạt, Hạnh, Quân, Đăng
 **Repo:** https://github.com/Minh-lab/document-management
+**Dùng chung:** Firebase `document-management-f7883` · Supabase `lwebnjcszbldlqwjrcan`
 
-> ⚠️ Thời gian rất ngắn: mỗi hạng mục chỉ làm **bản MVP chạy được**, các phần "nếu còn thời gian" nằm ở mục 6.
+Tài liệu hướng dẫn clone và triển khai: [`HUONG_DAN_TRIEN_KHAI.pdf`](HUONG_DAN_TRIEN_KHAI.pdf)
 
 ---
 
-## 1. Hiện trạng mã nguồn so với checklist
+## 1. Hiện trạng so với checklist
 
-| # | Hạng mục checklist | Hiện trạng | Phần còn thiếu (MVP cần làm) |
+| # | Hạng mục | Đã có | Còn thiếu |
 |---|---|---|---|
-| 1 | Kiến trúc + mô hình dữ liệu Firebase (Auth/Messaging) & Supabase (DB/Storage) | Firebase Auth (anonymous + Google), Edge Function `verify-firebase-token`, Supabase documents/categories/permissions, Storage | Bảng mới (tag, vị trí, borrow, interest), RLS, FCM, sơ đồ kiến trúc |
-| 2 | UI Flutter đa nền tảng, responsive Mobile + Web | UI một cột, chưa có breakpoint | Breakpoint + `ResponsiveScaffold`, grid co giãn, form 2 cột, dialog/sheet |
-| 3 | Tag + bản đồ/vị trí vật lý | Chưa có (chỉ `categories`) | `tags`, `document_tags`, `document_locations`, UI tag, bản đồ/chọn vị trí |
-| 4 | Luồng mượn & chia sẻ quyền | Đã có chia sẻ viewer/editor/owner | Yêu cầu mượn → duyệt/từ chối → trả + thông báo |
-| 5 | Recommendation theo sở thích/tag | Chưa có | `user_interests`, hàm scoring, khối "Gợi ý cho bạn" |
-| 6 | Kiểm thử toàn diện + đóng gói | 2 test (architecture, widget), chưa CI | Test plan, unit/widget/integration, CI, build APK + Web |
+| 1 | Kiến trúc + mô hình dữ liệu Firebase/Supabase | Firebase Auth (anonymous, Google), Supabase documents/categories/permissions, Storage bucket | Bảng cho tag, vị trí, mượn, sở thích; RLS; FCM; tài liệu kiến trúc |
+| 2 | UI Flutter đa nền tảng, responsive | UI cơ bản, chạy Android + Web | Breakpoint, layout co giãn, form/dialog responsive |
+| 3 | Tag + bản đồ/vị trí | Chỉ có `categories` | `tags`, `document_tags`, `document_locations`, UI tag, bản đồ |
+| 4 | Mượn và chia sẻ quyền | Chia sẻ viewer/editor/owner | Luồng yêu cầu mượn, duyệt/từ chối/trả, thông báo |
+| 5 | Recommendation | Chưa có | `user_interests`, hàm chấm điểm, khối gợi ý |
+| 6 | Kiểm thử + đóng gói | 2 test, chưa có CI | Test plan, test tích hợp, CI, build APK/Web |
 
 ---
 
-## 2. Nguyên tắc phân chia
+## 2. Phân công
 
-1. **1 hạng mục = 1 owner**, người khác chỉ góp ý qua PR.
-2. **Schema + interface chốt trưa 20/10** (Minh) để 4 người còn lại code ngay, không chờ.
-3. **UI của ai người đó làm**, Đạt lo design system + review responsive toàn bộ.
-4. **Ai viết tính năng, người đó viết test**; Đăng chạy test tích hợp và chốt chất lượng.
-5. **Mỗi ngày merge xong trước 22h**, `main` luôn chạy được, không push trực tiếp.
-
----
-
-## 3. Bảng phân công
-
-| Thành viên | Vai trò | Hạng mục | Ước lượng |
+| Thành viên | Phụ trách | Công việc cụ thể | Khối lượng |
 |---|---|---|---|
-| **Minh** | Nhóm trưởng, kiến trúc & release | #1 (chính), #6 (CI + đóng gói) | ~5 ngày công |
-| **Đạt** | Frontend/UI lead | #2 (chính), review UI | ~4,5 ngày công |
-| **Hạnh** | Feature – Tag & vị trí | #3 (chính) | ~4,5 ngày công |
-| **Quân** | Feature – nghiệp vụ chia sẻ | #4 (chính) | ~4,5 ngày công |
-| **Đăng** | Recommendation + QA | #5 (chính), #6 (test) | ~4,5 ngày công |
+| **Minh** (nhóm trưởng) | **#1** Kiến trúc và mô hình dữ liệu | Thiết kế sơ đồ kiến trúc; viết schema và RLS; công bố interface service; viết `ARCHITECTURE.md`; review PR; duyệt phát hành. **Không nhận UI và tính năng.** | Ít hơn (thiết kế, review) |
+| **Đạt** | **#2** Giao diện đa nền tảng | Breakpoint và `ResponsiveScaffold`; design system; home grid, form, dialog responsive; review UI; build bản Web | Trung bình |
+| **Hạnh** | **#3** Tag và vị trí vật lý | Model/service tag; gán và lọc tag; bảng vị trí; bản đồ, chọn vị trí, chỉ đường; xử lý khi mất quyền vị trí | Trung bình |
+| **Quân** | **#4** Mượn và chia sẻ quyền | State machine yêu cầu mượn; service và màn hình yêu cầu; mở rộng chia sẻ; tích hợp FCM và thông báo; audit cơ bản | Cao |
+| **Đăng** | **#5** Recommendation, **#6** Kiểm thử và đóng gói | Lưu sở thích theo tag; công thức gợi ý; khối "Gợi ý cho bạn"; test plan, unit/widget/integration test; CI; build APK; báo cáo kiểm thử | Cao nhất |
 
----
+### 2.1. Chi tiết theo người
 
-## 4. Chi tiết từng thành viên
-
-### 4.1. Minh — Kiến trúc & mô hình dữ liệu (checklist #1)
-
-- Sơ đồ kiến trúc: Flutter → Firebase Auth → Edge Function → Supabase JWT → PostgREST/Storage; FCM cho thông báo.
+**Minh — #1**
+- Sơ đồ kiến trúc: Flutter → Firebase Auth → Supabase JWT → PostgREST/Storage; FCM cho thông báo.
 - Schema v2 + RLS: `tags`, `document_tags`, `document_locations`, `borrow_requests`, `document_views`, `user_interests`, `device_tokens`.
-- Tách `supabase_service.dart` (471 dòng) thành `document_service`, `share_service`, `tag_service`, `borrow_service`; công bố chữ ký hàm cho nhóm.
-- Bật FCM (Android + Web), lưu `device_tokens`, Edge Function `notify` gửi thông báo.
-- `docs/ARCHITECTURE.md` + cập nhật `docs/SPEC.md`.
+- Công bố interface cho `document`, `tag`, `borrow`, `recommendation` để cả nhóm code song song.
+- Review PR, xử lý thay đổi schema, viết `docs/ARCHITECTURE.md`.
+- Bàn giao hàm gửi thông báo (Edge Function) cho Quân.
 
-**File:** `code/supabase_schema.sql`, `code/supabase_rls_policies.sql`, `code/supabase/functions/**`, `code/lib/services/supabase_service.dart`, `code/lib/config/**`, `docs/ARCHITECTURE.md`.
-
-**DoD:** SQL chạy được trên Supabase; test âm (A không đọc được tài liệu private của B); gửi được 1 thông báo FCM thật.
-
----
-
-### 4.2. Đạt — UI đa nền tảng & responsive (checklist #2)
-
+**Đạt — #2**
 - `lib/utils/responsive.dart`: `compact < 600`, `medium 600–1024`, `expanded ≥ 1024`.
-- `ResponsiveScaffold`: BottomNavigationBar (mobile) ↔ NavigationRail (web/tablet), giới hạn `maxContentWidth`.
-- `home_page.dart` → `SliverGrid` 1/2/3/4 cột; `document_card.dart` hỗ trợ hover trên web.
-- Form 1 cột ↔ 2 cột; dialog chia sẻ: `Dialog` (web) / `BottomSheet` (mobile).
-- Design token: `AppColors`, `AppTheme`, component dùng chung; `SafeArea`, text scale.
-- Widget test layout 3 breakpoint.
+- `ResponsiveScaffold`: BottomNavigationBar ↔ NavigationRail, giới hạn chiều rộng nội dung trên Web.
+- Home grid 1/2/3/4 cột; card hover trên Web; form 1↔2 cột; dialog (Web) ↔ bottom sheet (Mobile).
+- Design token, theme, component dùng chung; review UI toàn bộ; build bản Web.
 
-**File:** `code/lib/pages/**`, `code/lib/widgets/**`, `code/lib/colors.dart`, `code/lib/main.dart` (theme), `code/lib/utils/responsive.dart`.
-
-**DoD:** 3 ảnh chụp 360/768/1440px cho mỗi màn hình chính; không overflow; test layout pass.
-
----
-
-### 4.3. Hạnh — Tag & bản đồ/vị trí (checklist #3)
-
-- `TagModel` + `tag_service`: CRUD tag, gán/bỏ tag, lọc theo nhiều tag.
-- UI: chip chọn tag trong form, thanh lọc tag ở trang chủ, màu tag.
+**Hạnh — #3**
+- `TagModel`, `tag_service`: CRUD tag, gán/bỏ tag, lọc theo nhiều tag.
+- UI chip chọn tag, thanh lọc ở trang chủ, màu tag.
 - `document_locations`: latitude, longitude, place_name, shelf, note.
-- Chọn vị trí: `flutter_map` + OpenStreetMap (không cần API key), marker + "Chỉ đường" qua `url_launcher`; nhập địa chỉ thủ công nếu từ chối quyền.
-- Test: unit test lọc tag, widget test tag chip.
+- Bản đồ `flutter_map` + OpenStreetMap, marker, chỉ đường; fallback nhập địa chỉ tay.
 
-**File:** `code/lib/struct/tag_model.dart`, `code/lib/struct/location_model.dart`, `code/lib/services/tag_service.dart`, `code/lib/services/location_service.dart`, `code/lib/widgets/tag_chip.dart`, `code/lib/widgets/location_picker.dart`, phần tag/vị trí trong `document_form_page.dart`.
-
-**DoD:** Gán ≥ 3 tag/tài liệu và lọc đúng; lưu/mở lại được vị trí; bản đồ render trên Android + Web; tài liệu cũ vẫn hiển thị bình thường.
-
----
-
-### 4.4. Quân — Mượn & chia sẻ quyền (checklist #4)
-
-- Trạng thái: `pending → approved → returned`, nhánh `rejected | cancelled`; `due_date`; chặn mượn trùng.
-- `borrow_service`: tạo/duyệt/từ chối/huỷ/đánh dấu đã trả; "Tôi mượn" và "Chờ duyệt".
+**Quân — #4**
+- Trạng thái `pending → approved → returned`, nhánh `rejected | cancelled`; `due_date`; chặn mượn trùng.
+- `borrow_service`, màn hình "Yêu cầu" kèm badge, chi tiết yêu cầu.
 - Mở rộng `share_dialog.dart`: viewer/editor, thu hồi quyền, danh sách người có quyền.
-- UI tab "Yêu cầu" + badge; dialog xác nhận.
-- FCM: yêu cầu mới → `notify`; được duyệt → báo người mượn.
-- Test: unit test state machine, test RLS (người ngoài không thấy yêu cầu).
+- Tích hợp FCM: yêu cầu mới và kết quả duyệt; audit cơ bản.
 
-**File:** `code/lib/services/borrow_service.dart`, `code/lib/services/notification_service.dart`, `code/lib/struct/borrow_request_model.dart`, `code/lib/widgets/share_dialog.dart`, `code/lib/pages/requests_page.dart`.
-
-**DoD:** 1 vòng nghiệp vụ trên 2 tài khoản thật (A yêu cầu → B duyệt → A mở → A trả → quyền về như cũ); thông báo tới trong ≤ 10 giây; trạng thái sai bị chặn ở client và DB.
-
----
-
-### 4.5. Đăng — Recommendation + kiểm thử (checklist #5, #6)
-
+**Đăng — #5, #6**
 - `user_interests(user_id, tag_id, weight)` cập nhật khi mở/tag/lưu tài liệu.
-- Công thức: `score = 0.5×tag_overlap + 0.3×độ_mới + 0.2×lượt_xem`, chuẩn hoá 0–1, loại tài liệu của mình và tài liệu vừa xem.
-- Cold start: người dùng mới → tag phổ biến + tài liệu mới nhất.
-- Khối "Gợi ý cho bạn" + lý do ("Vì bạn quan tâm #Giải tích").
-- QA: test plan, unit test scoring, widget test, integration test, test RLS 2 tài khoản, checklist E2E thủ công, đo coverage, quản lý bug.
-
-**File:** `code/lib/services/recommendation_service.dart`, thành phần gợi ý trong `home_page.dart` (phối hợp Đạt), `code/test/**`, `code/integration_test/**`, `docs/TEST_PLAN.md`.
-
-**DoD:** Gợi ý chạy < 300ms với 200 tài liệu, có lý do; coverage service ≥ 60%; toàn bộ test pass trên CI; không còn bug P0/P1.
+- Công thức: `0.5×tag_overlap + 0.3×độ_mới + 0.2×lượt_xem`, loại tài liệu của mình và vừa xem.
+- Cold start: tag phổ biến + tài liệu mới nhất; khối "Gợi ý cho bạn" kèm lý do.
+- Test plan, unit/widget/integration test, test RLS hai tài khoản; CI; build APK; báo cáo kiểm thử.
 
 ---
 
-## 5. Lịch 5 ngày (20/10 → 24/10)
+## 3. Phụ thuộc
 
-### Ngày 1 — 20/10: Chốt nền tảng
-
-| Giờ | Việc | Người | Kết quả |
-|---|---|---|---|
-| 8h30 | Họp 30': chốt phạm vi MVP, nhánh, quy ước | Cả nhóm | Biên bản ngắn trong issue |
-| 9h–12h | Schema v2 + RLS + công bố interface service | Minh | SQL chạy trên Supabase |
-| 9h–12h | Khung `responsive.dart`, design token | Đạt | Breakpoint + theme |
-| 9h–12h | Model + service tag/vị trí (chưa UI) | Hạnh | `tag_service` chạy với DB thật |
-| 9h–12h | Model + state machine borrow (chưa UI) | Quân | Unit test state machine |
-| 9h–12h | Hàm scoring + khung test plan | Đăng | Unit test scoring pass |
-| 13h30–18h | Nối service vào UI, mỗi người 1 màn hình | Cả nhóm | PR đầu tiên |
-| 18h–22h | Review + merge; Minh kiểm tra RLS | Cả nhóm | **M1: schema + interface + UI khung** |
-
-### Ngày 2 — 21/10: Ba tính năng chạy được
-
-| Người | Việc trong ngày | Mốc |
+| Hạng mục chờ | Từ | Đến |
 |---|---|---|
-| Minh | FCM setup (Android + Web), Edge Function `notify`, review PR | Gửi được thông báo test |
-| Đạt | Home grid responsive, card, form 2 cột | Chạy tốt 3 breakpoint |
-| Hạnh | Tag chip, gán tag trong form, lọc tag trang chủ | Gán + lọc tag thật |
-| Quân | UI gửi yêu cầu mượn, danh sách chờ duyệt | Tạo yêu cầu thật trên DB |
-| Đăng | `user_interests`, khối gợi ý (stub nếu chưa có dữ liệu) | Gợi ý hiển thị theo tag |
-| 22h | Merge hết, chạy `flutter analyze` + test | **M2: tag, mượn, gợi ý chạy end-to-end** |
+| Schema `tags`, `document_tags`, `document_locations` | Minh | Hạnh |
+| Bảng `borrow_requests` + interface `borrow_service` | Minh | Quân |
+| `user_interests`, `document_views` | Minh | Đăng |
+| Breakpoint và component dùng chung | Đạt | Cả nhóm |
+| `TagModel` và API lọc tag | Hạnh | Đăng |
+| Hàm gửi thông báo (FCM) | Minh | Quân |
 
-### Ngày 3 — 22/10: Hoàn thiện + tích hợp
-
-| Người | Việc trong ngày | Mốc |
-|---|---|---|
-| Minh | FCM end-to-end (duyệt → báo người mượn), fix RLS, viết `ARCHITECTURE.md` | Thông báo ≤ 10s |
-| Đạt | Dialog/sheet responsive, rà soát toàn bộ màn hình trên Chrome | Không còn overflow |
-| Hạnh | Bản đồ + chọn vị trí + chỉ đường, fallback nhập tay | Lưu/mở lại vị trí |
-| Quân | Duyệt/từ chối/trả, thu hồi quyền, audit cơ bản | Trọn 1 vòng nghiệp vụ |
-| Đăng | Test tích hợp 2 tài khoản, báo bug lên Issues | Danh sách bug P0/P1 |
-| 23h | **Feature freeze** — không thêm tính năng | **M3** |
-
-### Ngày 4 — 23/10: Kiểm thử toàn diện
-
-| Người | Việc trong ngày |
-|---|---|
-| Đăng | Chạy full test, đo coverage, viết `TEST_PLAN.md`, điều phối bug |
-| Minh | CI GitHub Actions (analyze + test), build thử APK + Web |
-| Đạt | Fix bug UI, accessibility (tap ≥ 48dp, contrast) |
-| Hạnh | Fix bug tag/vị trí, test trên Android thật |
-| Quân | Fix bug luồng mượn, test 2 tài khoản |
-| 23h | **M4: test pass, coverage ≥ 60%, hết bug P0/P1** |
-
-### Ngày 5 — 24/10: Đóng gói & nộp
-
-| Giờ | Việc | Người |
-|---|---|---|
-| 8h–12h | Build APK release + Web build, kiểm tra cài đặt máy sạch | Minh, Đăng |
-| 8h–12h | Ảnh demo 3 breakpoint, slide | Đạt |
-| 8h–12h | Tài liệu hướng dẫn tag/vị trí | Hạnh |
-| 8h–12h | Tài liệu hướng dẫn chia sẻ/mượn | Quân |
-| 13h30–16h | Báo cáo nhóm + phần từng người, video demo 3–5 phút | Cả nhóm |
-| 16h–17h | Rà soát lần cuối, tag release `v1.0.0`, nộp | Minh |
-| **17h** | **M5: Nộp bài** | |
+Chưa có API thật thì dùng stub đúng chữ ký đã chốt, không chờ nhau.
 
 ---
 
-## 6. Cắt giảm phạm vi (bắt buộc để kịp 24/10)
-
-**Làm (MVP):** đăng nhập, CRUD tài liệu, tag + lọc tag, vị trí + bản đồ, chia sẻ viewer/editor, yêu cầu mượn → duyệt → trả, gợi ý theo tag, responsive 3 breakpoint, test + build.
-
-**Cắt / để sau (ghi vào "Hướng phát triển" của báo cáo):**
-- Dark mode, animation nâng cao.
-- Audit log đầy đủ (chỉ log chia sẻ/thu hồi/duyệt).
-- Deep link từ thông báo (chỉ mở app + tab Yêu cầu).
-- Onboarding chọn tag (thay bằng cold-start đơn giản).
-- E2E tự động (dùng checklist thủ công).
-- Realtime cập nhật danh sách (dùng pull-to-refresh).
-- Chat/bình luận trên tài liệu.
-
----
-
-## 7. Phụ thuộc & điểm đồng bộ
-
-| Phụ thuộc | Từ | Đến | Thời điểm |
-|---|---|---|---|
-| Schema `tags`, `document_tags`, `document_locations` | Minh | Hạnh | Trưa 20/10 |
-| Interface `borrow_service` + bảng `borrow_requests` | Minh | Quân | Trưa 20/10 |
-| `user_interests`, `document_views` | Minh | Đăng | Trưa 20/10 |
-| Hàm `notify` (FCM) | Minh | Quân | Chiều 21/10 |
-| Breakpoint + component dùng chung | Đạt | Cả nhóm | Chiều 20/10 |
-| `TagModel` + API lọc tag | Hạnh | Đăng | Trưa 21/10 |
-
-**Quy ước chặn:** chưa có API thật thì dùng stub đúng chữ ký đã chốt, không ngồi chờ.
-
----
-
-## 8. Thay đổi dữ liệu (Minh chốt trưa 20/10)
+## 4. Dữ liệu mới
 
 | Bảng | Trường chính | Ghi chú |
 |---|---|---|
 | `tags` | id, name (unique), color | Dùng chung toàn hệ thống |
-| `document_tags` | document_id, tag_id | PK ghép, cascade delete |
-| `document_locations` | document_id (unique), latitude, longitude, place_name, shelf, note | 1 tài liệu ↔ 1 vị trí |
-| `borrow_requests` | id, document_id, requester_id, owner_id, status, message, requested_at, responded_at, due_date | `status` enum + check constraint |
-| `document_views` | id, document_id, user_id, viewed_at | Cho "lượt xem" + loại trừ đã xem |
-| `user_interests` | user_id, tag_id, weight | PK ghép, weight tăng dần khi tương tác |
+| `document_tags` | document_id, tag_id | Khóa ghép, cascade delete |
+| `document_locations` | document_id (unique), latitude, longitude, place_name, shelf, note | Một tài liệu một vị trí |
+| `borrow_requests` | id, document_id, requester_id, owner_id, status, message, requested_at, responded_at, due_date | `status` là enum có check constraint |
+| `document_views` | id, document_id, user_id, viewed_at | Nguồn cho lượt xem và loại trừ đã xem |
+| `user_interests` | user_id, tag_id, weight | Khóa ghép, weight tăng khi tương tác |
 | `device_tokens` | user_id, token, platform | FCM token theo thiết bị |
 
-**Bảo mật:** bật RLS mọi bảng mới; đọc dựa trên `auth.uid()` + bảng `permissions`; chỉ owner được xoá; service role chỉ trong Edge Function.
+Bật RLS cho mọi bảng mới; đọc dựa trên `auth.uid()` và bảng `permissions`; chỉ chủ sở hữu được xóa.
 
 ---
 
-## 9. Git & Definition of Done
+## 5. Definition of Done
 
-- Nhánh: `feature/<ten>-<viec>` (vd `feature/hanh-tag-location`), `fix/...`, `docs/...`.
-- Commit: `feat:`, `fix:`, `docs:`, `test:`, `refactor:`, `chore:`.
-- PR cần 1 review + CI xanh; **không push trực tiếp `main`**.
-- DoD mỗi task: chạy trên Android **và** Web; có test; `architecture_test.dart` pass; cập nhật tài liệu; không commit secret.
+1. Chạy được trên Android **và** Web.
+2. Có test cho logic mới; `architecture_test.dart` pass.
+3. `flutter analyze` không lỗi.
+4. Cập nhật tài liệu liên quan.
+5. Không commit secret, `build/`, `.dart_tool/`, `.idea/`.
+
+**Git:** nhánh `feature/<ten>-<viec>`, `fix/<mo-ta>`; commit `feat|fix|docs|test|refactor|chore:`; mọi thay đổi vào `main` qua Pull Request có ít nhất một review.
 
 ---
 
-## 10. Rủi ro & phương án (5 ngày)
+## 6. Rủi ro
 
 | Rủi ro | Phương án |
 |---|---|
-| Schema đổi sau 20/10 làm 4 người sửa lại | Chốt trưa 20/10; mọi thay đổi phải báo nhóm ngay trong ngày |
+| Schema thay đổi muộn | Minh chốt sớm, thay đổi phải thông báo ngay trong ngày |
+| RLS sai gây lộ dữ liệu | Test âm với hai tài khoản, review chéo policy |
+| Khối lượng dồn vào Đăng (recommendation + QA) | Đạt hỗ trợ build Web; mỗi owner tự viết test cho phần mình |
+| Minh là điểm nghẽn review | PR nhỏ, review trong ngày; Đạt review UI thay Minh |
 | Bản đồ cần API key | Dùng `flutter_map` + OSM, không cần key |
-| FCM trên Web cần service worker/HTTPS | Test trên `localhost` + bản deploy; fallback hiện thông báo trong app |
-| RLS sai gây lộ dữ liệu | Test âm 2 tài khoản, review chéo policy |
-| UI dồn vào Đạt | Owner tự dựng UI theo design system, Đạt chỉ review |
-| Trượt tiến độ | Cắt ngay phần trong mục 6, giữ đủ 6 hạng mục ở mức MVP |
-| Merge muộn gây vỡ `main` | Merge trước 22h mỗi ngày, PR nhỏ, ai làm vỡ `main` người đó sửa ngay |
-
----
-
-## 11. Sản phẩm bàn giao (17h ngày 24/10)
-
-- [ ] Mã nguồn trên GitHub, `main` sạch, CI xanh, tag `v1.0.0`.
-- [ ] `docs/ARCHITECTURE.md` — sơ đồ kiến trúc + mô hình dữ liệu.
-- [ ] `docs/TEST_PLAN.md` — kế hoạch + kết quả kiểm thử, coverage.
-- [ ] `app-release.apk` + bản Web build.
-- [ ] Báo cáo cuối kỳ (nhóm + phần từng thành viên).
-- [ ] Slide + video demo 3–5 phút.
+| FCM trên Web cần service worker | Test trên localhost, fallback thông báo trong app |
