@@ -11,4 +11,5 @@ class SupabaseConfig {
   static const String categoriesTable = 'categories';
   static const String usersTable = 'users';
   static const String permissionsTable = 'permissions';
+  static const String notificationsTable = 'notifications';
 }

@@ -147,6 +147,27 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
     }
   }
 
+  Widget _buildSaveButton() {
+    return FilledButton.icon(
+      onPressed: _isSaving ? null : _save,
+      icon: _isSaving
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.save_outlined, size: 18),
+      label: Text(
+        _isSaving
+            ? 'Đang lưu...'
+            : (widget.isEditing ? 'Lưu thay đổi' : 'Lưu tài liệu'),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -154,6 +175,18 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
         title: Text(widget.isEditing ? 'Sửa tài liệu' : 'Thêm tài liệu'),
       ),
       body: _buildBody(context),
+      bottomNavigationBar: context.isCompact && !_isLoadingCategories
+          ? SafeArea(
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+                decoration: const BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border(top: BorderSide(color: AppColors.border)),
+                ),
+                child: _buildSaveButton(),
+              ),
+            )
+          : null,
     );
   }
 
@@ -250,25 +283,10 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
             const SizedBox(height: 16),
             _InlineError(message: _saveError!),
           ],
-          const SizedBox(height: 22),
-          FilledButton.icon(
-            onPressed: _isSaving ? null : _save,
-            icon: _isSaving
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.save_outlined, size: 18),
-            label: Text(
-              _isSaving
-                  ? 'Đang lưu...'
-                  : (widget.isEditing ? 'Lưu thay đổi' : 'Lưu tài liệu'),
-            ),
-          ),
+          if (!context.isCompact) ...[
+            const SizedBox(height: 22),
+            _buildSaveButton(),
+          ],
           if (_isSaving && _selectedFile != null) ...[
             const SizedBox(height: 12),
             const LinearProgressIndicator(),

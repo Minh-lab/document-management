@@ -308,25 +308,12 @@ class _StatsRow extends StatelessWidget {
       ),
     ];
 
-    if (context.isCompact) {
-      return SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            for (var i = 0; i < cards.length; i++) ...[
-              SizedBox(width: 160, child: cards[i]),
-              if (i != cards.length - 1) const SizedBox(width: 12),
-            ],
-          ],
-        ),
-      );
-    }
-
     return Row(
       children: [
         for (var i = 0; i < cards.length; i++) ...[
           Expanded(child: cards[i]),
-          if (i != cards.length - 1) const SizedBox(width: 14),
+          if (i != cards.length - 1)
+            SizedBox(width: context.isCompact ? 10 : 14),
         ],
       ],
     );
@@ -348,49 +335,68 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final compact = context.isCompact;
+    final iconBox = Container(
+      width: compact ? 32 : 42,
+      height: compact ? 32 : 42,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(compact ? 10 : 12),
+      ),
+      child: Icon(icon, color: color, size: compact ? 17 : 21),
+    );
+
+    final valueText = Text(
+      value,
+      style: TextStyle(
+        fontSize: compact ? 18 : 20,
+        fontWeight: FontWeight.w800,
+        color: AppColors.textPrimary,
+      ),
+    );
+
+    final labelText = Text(
+      label,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(
+        fontSize: compact ? 10.5 : 12,
+        color: AppColors.textSecondary,
+      ),
+    );
+
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(icon, color: color, size: 21),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
+        padding: EdgeInsets.all(compact ? 12 : 16),
+        child: compact
+            ? Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    value,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
+                  iconBox,
+                  const SizedBox(height: 8),
+                  valueText,
                   const SizedBox(height: 1),
-                  Text(
-                    label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
+                  labelText,
+                ],
+              )
+            : Row(
+                children: [
+                  iconBox,
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        valueText,
+                        const SizedBox(height: 1),
+                        labelText,
+                      ],
                     ),
                   ),
                 ],
               ),
-            ),
-          ],
-        ),
       ),
     );
   }

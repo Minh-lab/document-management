@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -12,6 +13,7 @@ import 'struct/category_model.dart';
 import 'struct/document_model.dart';
 import 'struct/user_model.dart';
 import 'struct/permission_model.dart';
+import 'struct/notification_model.dart';
 
 final supabaseService = SupabaseService();
 final storageService = SupabaseStorageService();
@@ -410,6 +412,39 @@ Future<UserModel?> getCurrentUserProfile() async {
   return await supabaseService.getUserById(currentUserId);
 }
 
+/// Cập nhật thông tin tài khoản hiện tại (tên hiển thị, ảnh đại diện).
+/// Firebase Auth là nguồn chính; Supabase được đồng bộ lại nếu có thể.
+Future<firebase_auth.User> updateAccountProfile({
+  required String displayName,
+  String? photoURL,
+}) async {
+  final user = firebase_auth.FirebaseAuth.instance.currentUser;
+  if (user == null) throw Exception('Chưa có người dùng đăng nhập');
+
+  final name = displayName.trim();
+  if (name.isEmpty) throw Exception('Tên hiển thị không được để trống');
+
+  await user.updateDisplayName(name);
+
+  // photoURL = null nghĩa là giữ nguyên ảnh hiện tại;
+  // chuỗi rỗng nghĩa là xóa ảnh đại diện.
+  if (photoURL != null) {
+    final avatar = photoURL.trim();
+    await user.updatePhotoURL(avatar.isEmpty ? null : avatar);
+  }
+
+  await user.reload();
+
+  try {
+    await syncCurrentUser(displayName: name);
+  } catch (error) {
+    // Không chặn cập nhật Firebase nếu Supabase tạm thời không đồng bộ được.
+    debugPrint('⚠️ Không đồng bộ được hồ sơ lên Supabase: $error');
+  }
+
+  return user;
+}
+
 // ==================== PERMISSIONS (SHARING) ====================
 
 /// Chia sẻ tài liệu cho user khác
@@ -418,12 +453,34 @@ Future<PermissionModel> shareDocument({
   required String userId,
   required PermissionRole role,
 }) async {
-  return await supabaseService.shareDocument(
+  final permission = await supabaseService.shareDocument(
     documentId: documentId,
     userId: userId,
     role: role,
     grantedBy: currentUserId,
   );
+
+  // Gửi thông báo trong ứng dụng cho người được chia sẻ.
+  try {
+    final document = await getDocumentById(documentId);
+    final actor = await getCurrentUserProfile();
+    final actorName =
+        actor?.displayNameOrEmail ??
+        currentFirebaseUser?.displayName ??
+        'Một người dùng';
+    await createNotification(
+      userId: userId,
+      title: 'Tài liệu được chia sẻ',
+      body:
+          '$actorName đã chia sẻ "${document?.title ?? 'một tài liệu'}" với bạn.',
+      type: 'share',
+      documentId: documentId,
+    );
+  } catch (error) {
+    debugPrint('⚠️ Không tạo được thông báo chia sẻ: $error');
+  }
+
+  return permission;
 }
 
 /// Xóa quyền chia sẻ
@@ -452,4 +509,46 @@ Future<List<PermissionModel>> getDocumentShares(int documentId) async {
 /// Lấy tài liệu được chia sẻ cho user hiện tại
 Future<List<DocumentModel>> getSharedWithMe() async {
   return await supabaseService.getSharedDocuments(currentUserId);
+}
+
+// ==================== NOTIFICATIONS ====================
+
+/// Lấy thông báo của người dùng hiện tại.
+Future<List<NotificationModel>> getNotifications({int limit = 50}) async {
+  if (currentUserId.isEmpty) return [];
+  return supabaseService.getNotifications(userId: currentUserId, limit: limit);
+}
+
+/// Đếm thông báo chưa đọc của người dùng hiện tại.
+Future<int> getUnreadNotificationCount() async {
+  if (currentUserId.isEmpty) return 0;
+  return supabaseService.getUnreadNotificationCount(userId: currentUserId);
+}
+
+/// Đánh dấu một thông báo đã đọc.
+Future<void> markNotificationRead(int id) async {
+  await supabaseService.markNotificationRead(id);
+}
+
+/// Đánh dấu tất cả thông báo của người dùng hiện tại đã đọc.
+Future<void> markAllNotificationsRead() async {
+  if (currentUserId.isEmpty) return;
+  await supabaseService.markAllNotificationsRead(currentUserId);
+}
+
+/// Tạo thông báo mới cho một người dùng.
+Future<void> createNotification({
+  required String userId,
+  required String title,
+  String? body,
+  String type = 'system',
+  int? documentId,
+}) async {
+  await supabaseService.createNotification(
+    userId: userId,
+    title: title,
+    body: body,
+    type: type,
+    documentId: documentId,
+  );
 }

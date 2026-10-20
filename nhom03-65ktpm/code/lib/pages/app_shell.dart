@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../widgets/notification_bell_button.dart';
 import '../widgets/responsive_scaffold.dart';
 import '../widgets/user_menu_button.dart';
 import 'document_list_page.dart';
 import 'home_page.dart';
+import 'settings_page.dart';
 
 /// Khung chính sau khi đăng nhập, chứa các tab và điều hướng thích ứng.
 class AppShell extends StatefulWidget {
@@ -27,18 +29,39 @@ class _AppShellState extends State<AppShell> {
       selectedIcon: Icons.folder_rounded,
       label: 'Tài liệu',
     ),
+    AppDestination(
+      icon: Icons.settings_outlined,
+      selectedIcon: Icons.settings_rounded,
+      label: 'Cài đặt',
+    ),
   ];
+
+  String get _title {
+    switch (_selectedIndex) {
+      case 0:
+        return 'Trang chủ';
+      case 1:
+        return 'Tài liệu của tôi';
+      default:
+        return 'Cài đặt';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return ResponsiveScaffold(
-      title: _selectedIndex == 0 ? 'Trang chủ' : 'Tài liệu của tôi',
+      title: _title,
       destinations: _destinations,
       selectedIndex: _selectedIndex,
       onDestinationSelected: (index) {
         setState(() => _selectedIndex = index);
       },
-      actions: const [UserMenuButton()],
+      actions: [
+        const NotificationBellButton(),
+        UserMenuButton(
+          onOpenSettings: () => setState(() => _selectedIndex = 2),
+        ),
+      ],
       body: IndexedStack(
         index: _selectedIndex,
         children: [
@@ -46,6 +69,7 @@ class _AppShellState extends State<AppShell> {
             onViewAllDocuments: () => setState(() => _selectedIndex = 1),
           ),
           const DocumentListPage(),
+          const SettingsPage(),
         ],
       ),
     );
