@@ -9,3 +9,6 @@ code/.playwright-mcp/
 *.log
 .env
 .env.*
+
+# Báo cáo chạy cục bộ
+code/.run_reports/
