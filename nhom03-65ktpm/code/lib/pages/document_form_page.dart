@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../colors.dart';
 import '../functions.dart';
+import '../services/supabase_service.dart';
 import '../struct/category_model.dart';
 import '../struct/document_model.dart';
 import '../utils/responsive.dart';
@@ -42,6 +43,33 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
       _selectedCategoryId = document.categoryId;
     }
     _loadCategories();
+    if (document != null) {
+      _checkEditPermission(document.id);
+    }
+  }
+
+  /// Kiểm tra quyền chỉnh sửa khi mở form sửa tài liệu
+  Future<void> _checkEditPermission(int documentId) async {
+    if (currentUserId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bạn cần đăng nhập để chỉnh sửa')),
+      );
+      Navigator.of(context).pop();
+      return;
+    }
+    final permission = await supabaseService.getUserPermission(
+      documentId,
+      currentUserId,
+    );
+    if (permission != PermissionRole.owner &&
+        permission != PermissionRole.editor) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bạn không có quyền chỉnh sửa tài liệu này')),
+      );
+      Navigator.of(context).pop();
+    }
   }
 
   @override

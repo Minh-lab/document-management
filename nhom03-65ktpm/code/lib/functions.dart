@@ -305,6 +305,15 @@ Future<DocumentModel> updateDocument({
   String? existingFileUrl,
   String? existingStoragePath,
 }) async {
+  // Kiểm tra quyền chỉnh sửa trước khi cho phép cập nhật
+  if (currentUserId.isEmpty) {
+    throw Exception('Bạn cần đăng nhập để chỉnh sửa tài liệu');
+  }
+  final permission = await supabaseService.getUserPermission(id, currentUserId);
+  if (permission != PermissionRole.owner && permission != PermissionRole.editor) {
+    throw Exception('Bạn không có quyền chỉnh sửa tài liệu này');
+  }
+
   String? filePath;
   String? fileUrl = existingFileUrl;
   String? storagePath = existingStoragePath;
