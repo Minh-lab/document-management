@@ -3,11 +3,10 @@ import 'package:flutter/material.dart';
 
 import '../colors.dart';
 import '../functions.dart';
-import '../services/supabase_service.dart';
-import '../struct/category_model.dart';
-import '../struct/document_model.dart';
 import '../utils/responsive.dart';
+import '../widgets/document_location_map.dart';
 import '../widgets/state_views.dart';
+import 'location_picker_page.dart';
 
 class DocumentFormPage extends StatefulWidget {
   const DocumentFormPage({super.key, this.document});
@@ -28,6 +27,9 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
   List<CategoryModel> _categories = [];
   int? _selectedCategoryId;
   PlatformFile? _selectedFile;
+  DocumentLocationModel? _location;
+  bool _locationChanged = false;
+  bool _isLoadingLocation = false;
   bool _isLoadingCategories = true;
   bool _isSaving = false;
   String? _categoriesError;
@@ -45,7 +47,18 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
     _loadCategories();
     if (document != null) {
       _checkEditPermission(document.id);
+      _loadLocation(document.id);
     }
+  }
+
+  Future<void> _loadLocation(int documentId) async {
+    setState(() => _isLoadingLocation = true);
+    final location = await getDocumentLocation(documentId);
+    if (!mounted) return;
+    setState(() {
+      _location = location;
+      _isLoadingLocation = false;
+    });
   }
 
   /// Kiểm tra quyền chỉnh sửa khi mở form sửa tài liệu
@@ -66,7 +79,9 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
         permission != PermissionRole.editor) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bạn không có quyền chỉnh sửa tài liệu này')),
+        const SnackBar(
+          content: Text('Bạn không có quyền chỉnh sửa tài liệu này'),
+        ),
       );
       Navigator.of(context).pop();
     }
@@ -117,6 +132,34 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
     }
   }
 
+  Future<void> _pickLocation() async {
+    final result = await showLocationPickerDialog(
+      context,
+      existingLocation: _location,
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _location = result.deleted ? null : result.location;
+      _locationChanged = true;
+    });
+  }
+
+  Future<void> _persistLocation(int documentId) async {
+    final location = _location;
+    if (location == null || location.isEmpty) {
+      await deleteDocumentLocation(documentId);
+      return;
+    }
+    await upsertDocumentLocation(
+      documentId: documentId,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      placeName: location.placeName,
+      shelf: location.shelf,
+      note: location.note,
+    );
+  }
+
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
@@ -133,12 +176,15 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
 
     try {
       if (widget.document == null) {
-        await addDocument(
+        final document = await addDocument(
           title: _titleController.text.trim(),
           description: _descriptionController.text.trim(),
           file: _selectedFile,
           categoryId: _selectedCategoryId!,
         );
+        if (_location != null && !_location!.isEmpty) {
+          await _persistLocation(document.id);
+        }
       } else {
         await updateDocument(
           id: widget.document!.id,
@@ -149,6 +195,9 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
           existingFileUrl: widget.document!.fileUrl,
           existingStoragePath: widget.document!.storagePath,
         );
+        if (_locationChanged) {
+          await _persistLocation(widget.document!.id);
+        }
       }
 
       if (!mounted) return;
@@ -192,6 +241,103 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
         _isSaving
             ? 'Đang lưu...'
             : (widget.isEditing ? 'Lưu thay đổi' : 'Lưu tài liệu'),
+      ),
+    );
+  }
+
+  Widget _buildLocationSection() {
+    final location = _location;
+    final hasLocation = location != null && !location.isEmpty;
+
+    return _SectionCard(
+      title: 'Vị trí tài liệu',
+      subtitle: 'Chọn vị trí trên bản đồ để lưu tọa độ, địa chỉ và chỉ đường sau này.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_isLoadingLocation)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else if (location != null && location.hasCoordinates) ...[
+            DocumentLocationMap(
+              latitude: location.latitude!,
+              longitude: location.longitude!,
+              height: 160,
+              zoom: 16,
+              interactive: false,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              location.summaryText,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ] else
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    hasLocation
+                        ? Icons.place_outlined
+                        : Icons.add_location_alt_outlined,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      hasLocation ? location.summaryText : 'Chưa chọn vị trí. Bạn có thể chọn trên bản đồ hoặc bỏ trống.',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _isSaving ? null : _pickLocation,
+                icon: const Icon(Icons.map_outlined, size: 18),
+                label: Text(
+                  hasLocation ? 'Thay đổi vị trí' : 'Chọn vị trí trên bản đồ',
+                ),
+              ),
+              if (hasLocation)
+                TextButton.icon(
+                  onPressed: _isSaving
+                      ? null
+                      : () => setState(() {
+                          _location = null;
+                          _locationChanged = true;
+                        }),
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('Xóa vị trí'),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -340,7 +486,16 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
                   children: [
                     Expanded(flex: 3, child: basicInfo),
                     const SizedBox(width: 20),
-                    Expanded(flex: 2, child: classification),
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        children: [
+                          classification,
+                          const SizedBox(height: 16),
+                          _buildLocationSection(),
+                        ],
+                      ),
+                    ),
                   ],
                 )
               : Column(
@@ -348,6 +503,8 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
                     basicInfo,
                     const SizedBox(height: 16),
                     classification,
+                    const SizedBox(height: 16),
+                    _buildLocationSection(),
                   ],
                 ),
         ),

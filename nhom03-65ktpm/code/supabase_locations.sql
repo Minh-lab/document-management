@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS public.document_locations (
   document_id BIGINT NOT NULL UNIQUE REFERENCES public.documents(id) ON DELETE CASCADE,
   latitude    DOUBLE PRECISION,
   longitude   DOUBLE PRECISION,
+  -- Địa chỉ hiển thị / tên địa điểm do người dùng chọn hoặc tự điền từ bản đồ.
   place_name  TEXT,
   shelf       TEXT,
   note        TEXT,

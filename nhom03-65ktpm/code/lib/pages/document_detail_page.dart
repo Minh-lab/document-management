@@ -6,6 +6,7 @@ import '../colors.dart';
 import '../functions.dart';
 import '../utils/responsive.dart';
 import '../widgets/confirm_dialog.dart';
+import '../widgets/document_location_map.dart';
 import '../widgets/share_dialog.dart';
 import '../widgets/state_views.dart';
 import 'document_form_page.dart';
@@ -40,26 +41,76 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
   }
 
   Future<void> _editLocation() async {
-    final result = await Navigator.of(context).push<DocumentLocationModel?>(
-      MaterialPageRoute(
-        builder: (_) => LocationPickerPage(
-          documentId: widget.documentId,
-          existingLocation: _location,
-        ),
-      ),
+    final result = await showLocationPickerDialog(
+      context,
+      documentId: widget.documentId,
+      existingLocation: _location,
     );
-    // result == null means deleted, otherwise updated
-    if (mounted) {
-      setState(() => _location = result);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result == null
-              ? 'Đã xóa vị trí tài liệu'
-              : 'Đã lưu vị trí tài liệu'),
-        ),
+
+    // result == null nghĩa là người dùng hủy, không thay đổi dữ liệu.
+    if (result == null || !mounted) return;
+
+    try {
+      if (result.deleted) {
+        await deleteDocumentLocation(widget.documentId);
+        if (!mounted) return;
+        setState(() => _location = null);
+        _showLocationMessage('Đã xóa vị trí tài liệu');
+        return;
+      }
+
+      final location = result.location;
+      if (location == null) return;
+
+      final saved = await upsertDocumentLocation(
+        documentId: widget.documentId,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        placeName: location.placeName,
+        shelf: location.shelf,
+        note: location.note,
       );
+      if (!mounted) return;
+      setState(() => _location = saved ?? location);
+      _showLocationMessage('Đã lưu vị trí tài liệu');
+    } catch (error) {
+      if (!mounted) return;
+      _showLocationMessage('Không lưu được vị trí: $error');
     }
+  }
+
+  void _showLocationMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _openLocationDirections(DocumentLocationModel location) async {
+    if (!location.hasCoordinates) return;
+    final uri = Uri.https('www.google.com', '/maps/dir/', {
+      'api': '1',
+      'destination': '${location.latitude},${location.longitude}',
+      'travelmode': 'driving',
+    });
+    await _openExternalMap(uri);
+  }
+
+  Future<void> _openLocationOnMap(DocumentLocationModel location) async {
+    if (!location.hasCoordinates) return;
+    final uri = Uri.https('www.google.com', '/maps/search/', {
+      'api': '1',
+      'query': '${location.latitude},${location.longitude}',
+    });
+    await _openExternalMap(uri);
+  }
+
+  Future<void> _openExternalMap(Uri uri) async {
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    _showLocationMessage('Không thể mở ứng dụng bản đồ');
   }
 
   /// Kiểm tra xem user có quyền xem tài liệu không
@@ -116,7 +167,9 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     if (permission != PermissionRole.owner &&
         permission != PermissionRole.editor) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bạn không có quyền chỉnh sửa tài liệu này')),
+        const SnackBar(
+          content: Text('Bạn không có quyền chỉnh sửa tài liệu này'),
+        ),
       );
       return;
     }
@@ -135,9 +188,9 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
 
   Future<void> _delete() async {
     if (currentUserId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bạn cần đăng nhập để xóa')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bạn cần đăng nhập để xóa')));
       return;
     }
     final permission = await supabaseService.getUserPermission(
@@ -146,7 +199,9 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     );
     if (permission != PermissionRole.owner) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Chỉ chủ sở hữu tài liệu mới có quyền xóa')),
+        const SnackBar(
+          content: Text('Chỉ chủ sở hữu tài liệu mới có quyền xóa'),
+        ),
       );
       return;
     }
@@ -472,7 +527,11 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
           children: [
             Row(
               children: [
-                const Icon(Icons.location_on_outlined, size: 20, color: AppColors.primary),
+                const Icon(
+                  Icons.location_on_outlined,
+                  size: 20,
+                  color: AppColors.primary,
+                ),
                 const SizedBox(width: 8),
                 const Text(
                   'Vị trí vật lý',
@@ -486,7 +545,9 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
                 TextButton.icon(
                   onPressed: _editLocation,
                   icon: const Icon(Icons.edit_location_outlined, size: 16),
-                  label: Text(loc == null || loc.isEmpty ? 'Thêm vị trí' : 'Sửa vị trí'),
+                  label: Text(
+                    loc == null || loc.isEmpty ? 'Thêm vị trí' : 'Sửa vị trí',
+                  ),
                 ),
               ],
             ),
@@ -496,14 +557,14 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
                 'Chưa có thông tin vị trí. Nhấn "Thêm vị trí" để ghi lại nơi lưu trữ tài liệu.',
                 style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
               )
-            else ...[  
+            else ...[
               if (loc.placeName != null && loc.placeName!.isNotEmpty)
                 _InfoRow(
                   icon: Icons.place_outlined,
                   label: 'Địa điểm',
                   value: loc.placeName!,
                 ),
-              if (loc.shelf != null && loc.shelf!.isNotEmpty) ...[  
+              if (loc.shelf != null && loc.shelf!.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 _InfoRow(
                   icon: Icons.shelves,
@@ -511,7 +572,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
                   value: loc.shelf!,
                 ),
               ],
-              if (loc.note != null && loc.note!.isNotEmpty) ...[  
+              if (loc.note != null && loc.note!.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 _InfoRow(
                   icon: Icons.notes_outlined,
@@ -519,29 +580,38 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
                   value: loc.note!,
                 ),
               ],
-              if (loc.hasCoordinates) ...[  
+              if (loc.hasCoordinates) ...[
+                const SizedBox(height: 12),
+                DocumentLocationMap(
+                  latitude: loc.latitude!,
+                  longitude: loc.longitude!,
+                  height: 210,
+                  zoom: 17,
+                  interactive: false,
+                ),
                 const SizedBox(height: 8),
                 _InfoRow(
                   icon: Icons.gps_fixed,
                   label: 'Tọa độ',
-                  value: '${loc.latitude!.toStringAsFixed(5)}, ${loc.longitude!.toStringAsFixed(5)}',
+                  value:
+                      '${loc.latitude!.toStringAsFixed(5)}, ${loc.longitude!.toStringAsFixed(5)}',
                 ),
                 const SizedBox(height: 10),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    final uri = Uri.parse(
-                      'https://www.google.com/maps/search/?api=1&query=${loc.latitude},${loc.longitude}',
-                    );
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    } else if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Không thể mở ứng dụng bản đồ')),
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.navigation_outlined, size: 16),
-                  label: const Text('Chỉ đường'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      onPressed: () => _openLocationDirections(loc),
+                      icon: const Icon(Icons.navigation_outlined, size: 16),
+                      label: const Text('Chỉ đường'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: () => _openLocationOnMap(loc),
+                      icon: const Icon(Icons.map_outlined, size: 16),
+                      label: const Text('Mở bản đồ'),
+                    ),
+                  ],
                 ),
               ],
             ],
