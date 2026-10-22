@@ -41,7 +41,7 @@ class _AppShellState extends State<AppShell> {
       case 0:
         return 'Trang chủ';
       case 1:
-        return 'Tài liệu của tôi';
+        return 'Tài liệu';
       default:
         return 'Cài đặt';
     }

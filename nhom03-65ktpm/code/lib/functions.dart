@@ -269,15 +269,26 @@ Future<void> signOut() async {
 }
 
 /// Người dùng Firebase hiện tại
-firebase_auth.User? get currentFirebaseUser =>
-    firebase_auth.FirebaseAuth.instance.currentUser;
+firebase_auth.User? get currentFirebaseUser {
+  try {
+    return firebase_auth.FirebaseAuth.instance.currentUser;
+  } catch (_) {
+    // Firebase chưa được khởi tạo (ví dụ trong widget test hoặc web lỗi cấu hình).
+    return null;
+  }
+}
 
 /// Lấy user ID hiện tại
 String get currentUserId => currentFirebaseUser?.uid ?? '';
 
 /// Lấy stream user auth state
-Stream<firebase_auth.User?> get authStateChanges =>
-    firebase_auth.FirebaseAuth.instance.authStateChanges();
+Stream<firebase_auth.User?> get authStateChanges {
+  try {
+    return firebase_auth.FirebaseAuth.instance.authStateChanges();
+  } catch (_) {
+    return const Stream<firebase_auth.User?>.empty();
+  }
+}
 
 // ==================== CATEGORIES ====================
 
@@ -357,6 +368,9 @@ Future<DocumentModel> addDocument({
     // Di chuyển file trong Firebase Storage (copy + delete)
     await _moveFileInStorage(storagePath, newStoragePath);
 
+    // URL công khai phải trỏ tới đường dẫn mới (trước đó là path tạm).
+    fileUrl = storageService.getPublicUrl(newStoragePath);
+
     // Update document với storage path mới
     return await supabaseService.updateDocument(
       id: document.id,
@@ -386,7 +400,7 @@ Future<DocumentModel> updateDocument({
   if (currentUserId.isEmpty) {
     throw Exception('Bạn cần đăng nhập để chỉnh sửa tài liệu');
   }
-  final permission = await supabaseService.getUserPermission(id, currentUserId);
+  final permission = await getUserPermission(id);
   if (permission != PermissionRole.owner &&
       permission != PermissionRole.editor) {
     throw Exception('Bạn không có quyền chỉnh sửa tài liệu này');
@@ -434,6 +448,14 @@ Future<DocumentModel> updateDocument({
 
 /// Xóa tài liệu (kèm xóa file trên Firebase Storage)
 Future<void> deleteDocument(int id, {String? storagePath}) async {
+  if (currentUserId.isEmpty) {
+    throw Exception('Bạn cần đăng nhập để xóa tài liệu');
+  }
+  final permission = await getUserPermission(id);
+  if (permission != PermissionRole.owner) {
+    throw Exception('Chỉ chủ sở hữu tài liệu mới có quyền xóa');
+  }
+
   if (storagePath != null) {
     await storageService.deleteDocument(storagePath);
   }
@@ -534,12 +556,33 @@ Future<firebase_auth.User> updateAccountProfile({
 
 // ==================== PERMISSIONS (SHARING) ====================
 
+/// Đảm bảo người dùng hiện tại là chủ sở hữu tài liệu.
+Future<void> _ensureSharingOwner(int documentId) async {
+  if (currentUserId.isEmpty) {
+    throw Exception('Bạn cần đăng nhập để chia sẻ tài liệu');
+  }
+  final permission = await getUserPermission(documentId);
+  if (permission != PermissionRole.owner) {
+    throw Exception('Chỉ chủ sở hữu tài liệu mới có quyền chia sẻ');
+  }
+}
+
 /// Chia sẻ tài liệu cho user khác
 Future<PermissionModel> shareDocument({
   required int documentId,
   required String userId,
   required PermissionRole role,
 }) async {
+  if (role == PermissionRole.owner) {
+    throw Exception(
+      'Không thể cấp quyền chủ sở hữu. Chỉ có thể chia sẻ quyền xem hoặc chỉnh sửa.',
+    );
+  }
+  if (userId == currentUserId) {
+    throw Exception('Không thể chia sẻ tài liệu cho chính mình.');
+  }
+  await _ensureSharingOwner(documentId);
+
   final permission = await supabaseService.shareDocument(
     documentId: documentId,
     userId: userId,
@@ -555,11 +598,12 @@ Future<PermissionModel> shareDocument({
         actor?.displayNameOrEmail ??
         currentFirebaseUser?.displayName ??
         'Một người dùng';
+    final roleLabel = role == PermissionRole.editor ? 'chỉnh sửa' : 'xem';
     await createNotification(
       userId: userId,
       title: 'Tài liệu được chia sẻ',
       body:
-          '$actorName đã chia sẻ "${document?.title ?? 'một tài liệu'}" với bạn.',
+          '$actorName đã chia sẻ "${document?.title ?? 'một tài liệu'}" với bạn (quyền $roleLabel).',
       type: 'share',
       documentId: documentId,
     );
@@ -572,6 +616,7 @@ Future<PermissionModel> shareDocument({
 
 /// Xóa quyền chia sẻ
 Future<void> removeShare(int documentId, String userId) async {
+  await _ensureSharingOwner(documentId);
   await supabaseService.removePermission(documentId, userId);
 }
 
@@ -581,6 +626,12 @@ Future<PermissionModel> updateShare({
   required String userId,
   required PermissionRole role,
 }) async {
+  if (role == PermissionRole.owner) {
+    throw Exception(
+      'Không thể chuyển quyền chủ sở hữu. Chỉ có thể đổi giữa quyền xem và chỉnh sửa.',
+    );
+  }
+  await _ensureSharingOwner(documentId);
   return await supabaseService.updatePermission(
     documentId: documentId,
     userId: userId,
@@ -598,9 +649,21 @@ Future<List<DocumentModel>> getSharedWithMe() async {
   return await supabaseService.getSharedDocuments(currentUserId);
 }
 
-/// Kiểm tra quyền của user trên tài liệu
+/// Lấy vai trò được chia sẻ của user hiện tại theo từng tài liệu.
+Future<Map<int, PermissionRole>> getSharedDocumentRoles() async {
+  if (currentUserId.isEmpty) return {};
+  return await supabaseService.getPermissionsForUser(currentUserId);
+}
+
+/// Kiểm tra quyền của user trên tài liệu.
+/// Chủ sở hữu được xác định từ documents.user_id, không phụ thuộc
+/// vào việc bảng permissions có bản ghi owner hay không.
 Future<PermissionRole?> getUserPermission(int documentId) async {
   if (currentUserId.isEmpty) return null;
+
+  final ownerId = await supabaseService.getDocumentOwnerId(documentId);
+  if (ownerId == currentUserId) return PermissionRole.owner;
+
   return await supabaseService.getUserPermission(documentId, currentUserId);
 }
 

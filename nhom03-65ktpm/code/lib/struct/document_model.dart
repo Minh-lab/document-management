@@ -7,6 +7,7 @@ class DocumentModel {
   final String? storagePath; // Firebase Storage path
   final String categoryName;
   final int categoryId;
+  final String userId;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -19,6 +20,7 @@ class DocumentModel {
     this.storagePath,
     required this.categoryName,
     required this.categoryId,
+    required this.userId,
     required this.createdAt,
     required this.updatedAt,
   });

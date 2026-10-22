@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../struct/category_model.dart';
@@ -116,6 +117,7 @@ class SupabaseService {
         storagePath: json['storage_path'] as String?,
         categoryName: categoriesMap[categoryId] ?? '',
         categoryId: categoryId,
+        userId: json['user_id'] as String,
         createdAt: DateTime.parse(json['created_at'] as String),
         updatedAt: DateTime.parse(json['updated_at'] as String),
       );
@@ -147,6 +149,7 @@ class SupabaseService {
       storagePath: response['storage_path'] as String?,
       categoryName: categoryResponse?['name'] as String? ?? '',
       categoryId: response['category_id'] as int,
+      userId: response['user_id'] as String,
       createdAt: DateTime.parse(response['created_at'] as String),
       updatedAt: DateTime.parse(response['updated_at'] as String),
     );
@@ -179,15 +182,26 @@ class SupabaseService {
         .select()
         .single();
 
-    // Tự động tạo quyền owner cho người tạo tài liệu
-    await _client.from(SupabaseConfig.permissionsTable).insert({
-      'document_id': docResponse['id'] as int,
-      'user_id': userId,
-      'role': 'owner',
-      'granted_by': userId,
-    });
+    // Tự động tạo quyền owner cho người tạo tài liệu.
+    // Không chặn việc tạo tài liệu nếu bản ghi quyền tạm thời thất bại:
+    // quyền sở hữu vẫn được suy ra từ documents.user_id.
+    try {
+      await _client.from(SupabaseConfig.permissionsTable).insert({
+        'document_id': docResponse['id'] as int,
+        'user_id': userId,
+        'role': 'owner',
+        'granted_by': userId,
+      });
+    } catch (error) {
+      debugPrint('⚠️ Không tạo được bản ghi quyền owner: $error');
+    }
 
-    final category = docResponse['categories'] as Map<String, dynamic>;
+    final categoryResponse = await _client
+        .from(SupabaseConfig.categoriesTable)
+        .select('name')
+        .filter('id', 'eq', categoryId)
+        .maybeSingle();
+
     return DocumentModel(
       id: docResponse['id'] as int,
       title: docResponse['title'] as String,
@@ -195,8 +209,9 @@ class SupabaseService {
       filePath: docResponse['file_path'] as String?,
       fileUrl: docResponse['file_url'] as String?,
       storagePath: docResponse['storage_path'] as String?,
-      categoryName: category['name'] as String,
+      categoryName: categoryResponse?['name'] as String? ?? '',
       categoryId: docResponse['category_id'] as int,
+      userId: docResponse['user_id'] as String,
       createdAt: DateTime.parse(docResponse['created_at'] as String),
       updatedAt: DateTime.parse(docResponse['updated_at'] as String),
     );
@@ -492,6 +507,15 @@ class SupabaseService {
     required PermissionRole role,
     required String grantedBy,
   }) async {
+    if (role == PermissionRole.owner) {
+      throw Exception(
+        'Không thể cấp quyền chủ sở hữu. Chỉ có thể chia sẻ quyền xem hoặc chỉnh sửa.',
+      );
+    }
+    if (userId == grantedBy) {
+      throw Exception('Không thể chia sẻ tài liệu cho chính mình.');
+    }
+
     final response = await _client
         .from(SupabaseConfig.permissionsTable)
         .upsert({
@@ -515,7 +539,9 @@ class SupabaseService {
         .from(SupabaseConfig.permissionsTable)
         .delete()
         .filter('document_id', 'eq', documentId)
-        .filter('user_id', 'eq', userId);
+        .filter('user_id', 'eq', userId)
+        // Không bao giờ xóa bản ghi quyền chủ sở hữu.
+        .filter('role', 'neq', 'owner');
   }
 
   /// Cập nhật quyền
@@ -524,6 +550,12 @@ class SupabaseService {
     required String userId,
     required PermissionRole role,
   }) async {
+    if (role == PermissionRole.owner) {
+      throw Exception(
+        'Không thể chuyển quyền chủ sở hữu. Chỉ có thể đổi giữa quyền xem và chỉnh sửa.',
+      );
+    }
+
     final response = await _client
         .from(SupabaseConfig.permissionsTable)
         .update({'role': role.value})
@@ -554,6 +586,33 @@ class SupabaseService {
         .toList();
   }
 
+  /// Lấy user_id của chủ sở hữu tài liệu (nguồn xác thực quyền owner).
+  Future<String?> getDocumentOwnerId(int documentId) async {
+    final response = await _client
+        .from(SupabaseConfig.documentsTable)
+        .select('user_id')
+        .filter('id', 'eq', documentId)
+        .maybeSingle();
+    return response?['user_id'] as String?;
+  }
+
+  /// Lấy bản đồ document_id → vai trò của một người dùng (viewer/editor).
+  Future<Map<int, PermissionRole>> getPermissionsForUser(String userId) async {
+    final response = await _client
+        .from(SupabaseConfig.permissionsTable)
+        .select('document_id, role')
+        .filter('user_id', 'eq', userId)
+        .filter('role', 'in', '(viewer,editor)');
+
+    return {
+      for (final row in response as List)
+        row['document_id'] as int: PermissionRole.values.firstWhere(
+          (role) => role.value == row['role'],
+          orElse: () => PermissionRole.viewer,
+        ),
+    };
+  }
+
   /// Kiểm tra quyền của user trên tài liệu
   Future<PermissionRole?> getUserPermission(
     int documentId,
@@ -579,7 +638,8 @@ class SupabaseService {
     final permResponse = await _client
         .from(SupabaseConfig.permissionsTable)
         .select('document_id')
-        .filter('user_id', 'eq', userId);
+        .filter('user_id', 'eq', userId)
+        .filter('role', 'in', '(viewer,editor)');
 
     final docIds = (permResponse as List)
         .map((p) => p['document_id'] as int)
@@ -621,6 +681,7 @@ class SupabaseService {
         storagePath: json['storage_path'] as String?,
         categoryName: categoriesMap[categoryId] ?? '',
         categoryId: categoryId,
+        userId: json['user_id'] as String,
         createdAt: DateTime.parse(json['created_at'] as String),
         updatedAt: DateTime.parse(json['updated_at'] as String),
       );

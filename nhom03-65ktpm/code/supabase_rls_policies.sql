@@ -55,6 +55,10 @@ DROP POLICY IF EXISTS "Shared users can view documents" ON documents;
 DROP POLICY IF EXISTS "Shared editors can update documents" ON documents;
 
 DROP POLICY IF EXISTS "Owners can manage permissions" ON permissions;
+DROP POLICY IF EXISTS "Owners can view permissions" ON permissions;
+DROP POLICY IF EXISTS "Owners can insert permissions" ON permissions;
+DROP POLICY IF EXISTS "Owners can update permissions" ON permissions;
+DROP POLICY IF EXISTS "Owners can delete permissions" ON permissions;
 DROP POLICY IF EXISTS "Users can view own permissions" ON permissions;
 DROP POLICY IF EXISTS "Grantees can view their permissions" ON permissions;
 
@@ -119,12 +123,53 @@ CREATE POLICY "Shared editors can update documents" ON documents
 -- =============================================
 -- 7. PERMISSIONS TABLE POLICIES
 -- =============================================
--- Owner quản lý permissions (CRUD)
-CREATE POLICY "Owners can manage permissions" ON permissions
-  FOR ALL USING (
+-- Owner quản lý permissions (CRUD) của tài liệu mình sở hữu.
+CREATE POLICY "Owners can view permissions" ON permissions
+  FOR SELECT USING (
     document_id IN (
       SELECT id FROM documents WHERE user_id = current_user_id()
     )
+  );
+
+-- Chỉ được cấp quyền viewer/editor. Bản ghi owner chỉ hợp lệ khi
+-- user_id trùng với chủ sở hữu thật của tài liệu (documents.user_id).
+CREATE POLICY "Owners can insert permissions" ON permissions
+  FOR INSERT WITH CHECK (
+    document_id IN (
+      SELECT id FROM documents WHERE user_id = current_user_id()
+    )
+    AND (
+      role IN ('viewer', 'editor')
+      OR (role = 'owner' AND user_id = (
+        SELECT d.user_id FROM documents d WHERE d.id = permissions.document_id
+      ))
+    )
+  );
+
+CREATE POLICY "Owners can update permissions" ON permissions
+  FOR UPDATE USING (
+    document_id IN (
+      SELECT id FROM documents WHERE user_id = current_user_id()
+    )
+  ) WITH CHECK (
+    document_id IN (
+      SELECT id FROM documents WHERE user_id = current_user_id()
+    )
+    AND (
+      role IN ('viewer', 'editor')
+      OR (role = 'owner' AND user_id = (
+        SELECT d.user_id FROM documents d WHERE d.id = permissions.document_id
+      ))
+    )
+  );
+
+-- Không cho phép thu hồi bản ghi quyền chủ sở hữu.
+CREATE POLICY "Owners can delete permissions" ON permissions
+  FOR DELETE USING (
+    document_id IN (
+      SELECT id FROM documents WHERE user_id = current_user_id()
+    )
+    AND role <> 'owner'
   );
 
 -- User xem permission của mình (để biết quyền gì)

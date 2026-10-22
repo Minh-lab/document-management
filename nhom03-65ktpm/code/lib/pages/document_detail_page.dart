@@ -23,16 +23,21 @@ class DocumentDetailPage extends StatefulWidget {
 class _DocumentDetailPageState extends State<DocumentDetailPage> {
   DocumentModel? _document;
   DocumentLocationModel? _location;
+  PermissionRole? _permission;
   bool _isLoading = true;
   bool _changed = false;
   String? _error;
+
+  bool get _canEdit =>
+      _permission == PermissionRole.owner ||
+      _permission == PermissionRole.editor;
+
+  bool get _isOwner => _permission == PermissionRole.owner;
 
   @override
   void initState() {
     super.initState();
     _load();
-    recordDocumentView(widget.documentId); // UC-11: lượt xem + sở thích
-    _loadLocation();
   }
 
   Future<void> _loadLocation() async {
@@ -41,6 +46,14 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
   }
 
   Future<void> _editLocation() async {
+    if (!_canEdit) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bạn không có quyền chỉnh sửa vị trí tài liệu này'),
+        ),
+      );
+      return;
+    }
     final result = await Navigator.of(context).push<DocumentLocationModel?>(
       MaterialPageRoute(
         builder: (_) => LocationPickerPage(
@@ -65,34 +78,37 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     }
   }
 
-  /// Kiểm tra xem user có quyền xem tài liệu không
-  Future<bool> _hasDocumentPermission() async {
-    if (currentUserId.isEmpty) return false;
-    final permission = await getUserPermission(widget.documentId);
-    // Owner và editor có quyền xem, viewer cũng có quyền xem
-    return permission != null &&
-        (permission == PermissionRole.owner ||
-            permission == PermissionRole.editor ||
-            permission == PermissionRole.viewer);
-  }
-
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
-    // Kiểm tra quyền trước khi tải
-    final hasPermission = await _hasDocumentPermission();
-    if (!hasPermission && !mounted) return;
+    // Kiểm tra quyền trước khi tải nội dung tài liệu.
+    final permission = await getUserPermission(widget.documentId);
+    if (!mounted) return;
+    if (permission == null) {
+      setState(() {
+        _permission = null;
+        _document = null;
+        _isLoading = false;
+        _error = null;
+      });
+      return;
+    }
 
     try {
       final document = await getDocumentById(widget.documentId);
       if (!mounted) return;
       setState(() {
         _document = document;
+        _permission = permission;
         _isLoading = false;
       });
+      // Chỉ ghi nhận lượt xem sau khi đã xác thực quyền truy cập.
+      recordDocumentView(widget.documentId); // UC-11: lượt xem + sở thích
+      _loadLocation();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -109,9 +125,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
       );
       return;
     }
-    final permission = await getUserPermission(widget.documentId);
-    if (permission != PermissionRole.owner &&
-        permission != PermissionRole.editor) {
+    if (!_canEdit) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Bạn không có quyền chỉnh sửa tài liệu này'),
@@ -139,8 +153,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
       ).showSnackBar(const SnackBar(content: Text('Bạn cần đăng nhập để xóa')));
       return;
     }
-    final permission = await getUserPermission(widget.documentId);
-    if (permission != PermissionRole.owner) {
+    if (!_isOwner) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Chỉ chủ sở hữu tài liệu mới có quyền xóa'),
@@ -176,12 +189,23 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
   }
 
   void _share() {
+    if (!_isOwner) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Chỉ chủ sở hữu tài liệu mới có quyền chia sẻ'),
+        ),
+      );
+      return;
+    }
     final document = _document;
     if (document == null) return;
     showDialog<void>(
       context: context,
-      builder: (_) =>
-          ShareDialog(documentId: document.id, documentTitle: document.title),
+      builder: (_) => ShareDialog(
+        documentId: document.id,
+        documentTitle: document.title,
+        onShareChanged: () => _load(),
+      ),
     );
   }
 
@@ -192,10 +216,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
       );
       return;
     }
-    final permission = await getUserPermission(widget.documentId);
-    if (permission != PermissionRole.owner &&
-        permission != PermissionRole.editor &&
-        permission != PermissionRole.viewer) {
+    if (_permission == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Bạn không có quyền xem tài liệu này')),
       );
@@ -203,8 +224,22 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     }
 
     final document = _document;
-    final url = document?.openUrl;
-    if (document == null || url == null || url.isEmpty) {
+    if (document == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tài liệu này không có tệp đính kèm')),
+      );
+      return;
+    }
+
+    // Ưu tiên signed URL khi có storagePath (hoạt động cả với bucket private).
+    String? url;
+    final storagePath = document.storagePath;
+    if (storagePath != null && storagePath.isNotEmpty) {
+      url = await storageService.getSignedUrl(storagePath);
+    }
+    url ??= document.openUrl;
+
+    if (url == null || url.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Tài liệu này không có tệp đính kèm')),
       );
@@ -212,9 +247,26 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     }
 
     final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-      return;
+    try {
+      // Không phụ thuộc canLaunchUrl vì Android 11+ có thể trả false
+      // dù vẫn mở được bằng trình duyệt/ứng dụng bên ngoài.
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (launched) return;
+    } catch (error) {
+      debugPrint('⚠️ Không mở được tệp: $error');
+    }
+
+    // Thử fallback với canLaunchUrl + platformDefault (một số thiết bị).
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+        return;
+      }
+    } catch (error) {
+      debugPrint('⚠️ Fallback mở tệp thất bại: $error');
     }
 
     if (!mounted) return;
@@ -237,41 +289,46 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
         title: const Text('Chi tiết tài liệu'),
         actions: [
           if (_document != null) ...[
-            IconButton(
-              tooltip: 'Chỉnh sửa',
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: _edit,
-            ),
-            PopupMenuButton<String>(
-              tooltip: 'Tùy chọn',
-              onSelected: (value) {
-                if (value == 'share') _share();
-                if (value == 'delete') _delete();
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                  value: 'share',
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.share_outlined),
-                    title: Text('Chia sẻ'),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'delete',
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.delete_outline, color: AppColors.error),
-                    title: Text(
-                      'Xóa tài liệu',
-                      style: TextStyle(color: AppColors.error),
+            if (_canEdit)
+              IconButton(
+                tooltip: 'Chỉnh sửa',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: _edit,
+              ),
+            if (_isOwner)
+              PopupMenuButton<String>(
+                tooltip: 'Tùy chọn',
+                onSelected: (value) {
+                  if (value == 'share') _share();
+                  if (value == 'delete') _delete();
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'share',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.share_outlined),
+                      title: Text('Chia sẻ'),
                     ),
                   ),
-                ),
-              ],
-            ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        Icons.delete_outline,
+                        color: AppColors.error,
+                      ),
+                      title: Text(
+                        'Xóa tài liệu',
+                        style: TextStyle(color: AppColors.error),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             const SizedBox(width: 8),
           ],
         ],
@@ -343,6 +400,24 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
                       ? 'Chưa phân loại'
                       : document.categoryName,
                 ),
+                if (_permission == PermissionRole.viewer) ...[
+                  const SizedBox(width: 8),
+                  const _Badge(
+                    label: 'Chỉ xem',
+                    color: AppColors.textSecondary,
+                    background: Color(0xFFF1F5F9),
+                  ),
+                ] else if (_permission == PermissionRole.editor) ...[
+                  const SizedBox(width: 8),
+                  const _Badge(label: 'Có thể chỉnh sửa'),
+                ] else if (_permission == PermissionRole.owner) ...[
+                  const SizedBox(width: 8),
+                  const _Badge(
+                    label: 'Chủ sở hữu',
+                    color: AppColors.success,
+                    background: Color(0xFFE7F6EC),
+                  ),
+                ],
                 const Spacer(),
                 if (document.hasAttachment)
                   const _Badge(
@@ -376,16 +451,18 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
               spacing: 10,
               runSpacing: 10,
               children: [
-                FilledButton.icon(
-                  onPressed: _edit,
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  label: const Text('Chỉnh sửa'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _share,
-                  icon: const Icon(Icons.share_outlined, size: 18),
-                  label: const Text('Chia sẻ'),
-                ),
+                if (_canEdit)
+                  FilledButton.icon(
+                    onPressed: _edit,
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Chỉnh sửa'),
+                  ),
+                if (_isOwner)
+                  OutlinedButton.icon(
+                    onPressed: _share,
+                    icon: const Icon(Icons.share_outlined, size: 18),
+                    label: const Text('Chia sẻ'),
+                  ),
                 if (document.hasAttachment)
                   OutlinedButton.icon(
                     onPressed: _openFile,
@@ -482,13 +559,14 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
                   ),
                 ),
                 const Spacer(),
-                TextButton.icon(
-                  onPressed: _editLocation,
-                  icon: const Icon(Icons.edit_location_outlined, size: 16),
-                  label: Text(
-                    loc == null || loc.isEmpty ? 'Thêm vị trí' : 'Sửa vị trí',
+                if (_canEdit)
+                  TextButton.icon(
+                    onPressed: _editLocation,
+                    icon: const Icon(Icons.edit_location_outlined, size: 16),
+                    label: Text(
+                      loc == null || loc.isEmpty ? 'Thêm vị trí' : 'Sửa vị trí',
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 8),

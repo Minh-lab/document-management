@@ -26,14 +26,34 @@ class _DocumentListPageState extends State<DocumentListPage> {
   final _searchController = TextEditingController();
   Timer? _debounce;
   List<DocumentModel> _documents = [];
+  List<DocumentModel> _sharedDocuments = [];
+  Map<int, PermissionRole> _sharedRoles = {};
   List<CategoryModel> _categories = [];
   int? _selectedCategoryId;
+  bool _showShared = false;
   bool _isLoading = true;
+  bool _isLoadingShared = false;
   String? _error;
+  String? _sharedError;
   RealtimeChannel? _realtimeChannel;
 
   bool get _hasFilter =>
       _searchController.text.trim().isNotEmpty || _selectedCategoryId != null;
+
+  /// Tài liệu được chia sẻ sau khi áp dụng tìm kiếm/lọc phía client.
+  List<DocumentModel> get _filteredSharedDocuments {
+    final keyword = _searchController.text.trim().toLowerCase();
+    return _sharedDocuments.where((document) {
+      final matchesKeyword =
+          keyword.isEmpty ||
+          document.title.toLowerCase().contains(keyword) ||
+          (document.description ?? '').toLowerCase().contains(keyword);
+      final matchesCategory =
+          _selectedCategoryId == null ||
+          document.categoryId == _selectedCategoryId;
+      return matchesKeyword && matchesCategory;
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -84,6 +104,35 @@ class _DocumentListPageState extends State<DocumentListPage> {
     }
   }
 
+  Future<void> _loadShared({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _isLoadingShared = true;
+        _sharedError = null;
+      });
+    }
+
+    try {
+      final results = await Future.wait([
+        getSharedWithMe(),
+        getSharedDocumentRoles(),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _sharedDocuments = results[0] as List<DocumentModel>;
+        _sharedRoles = results[1] as Map<int, PermissionRole>;
+        _isLoadingShared = false;
+        _sharedError = null;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingShared = false;
+        _sharedError = error.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
   void _setupRealtime() {
     _realtimeChannel = supabaseService.subscribeToDocuments(
       userId: currentUserId,
@@ -93,6 +142,7 @@ class _DocumentListPageState extends State<DocumentListPage> {
 
   void _onSearchChanged(String _) {
     setState(() {});
+    if (_showShared) return;
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 350), () {
       _load(showLoading: false);
@@ -102,6 +152,7 @@ class _DocumentListPageState extends State<DocumentListPage> {
   void _clearFilters() {
     _searchController.clear();
     setState(() => _selectedCategoryId = null);
+    if (_showShared) return;
     _load();
   }
 
@@ -111,14 +162,31 @@ class _DocumentListPageState extends State<DocumentListPage> {
         builder: (_) => DocumentDetailPage(documentId: document.id),
       ),
     );
-    if (changed != false) _load(showLoading: false);
+    if (changed != false) {
+      if (_showShared) {
+        _loadShared(showLoading: false);
+      } else {
+        _load(showLoading: false);
+      }
+    }
+  }
+
+  void _switchTab(bool showShared) {
+    if (_showShared == showShared) return;
+    setState(() => _showShared = showShared);
+    if (showShared) _loadShared();
   }
 
   Future<void> _openForm([DocumentModel? document]) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => DocumentFormPage(document: document)),
     );
-    if (changed != false) _load(showLoading: false);
+    if (changed == false) return;
+    if (_showShared) {
+      _loadShared(showLoading: false);
+    } else {
+      _load(showLoading: false);
+    }
   }
 
   Future<void> _deleteDocument(DocumentModel document) async {
@@ -161,11 +229,25 @@ class _DocumentListPageState extends State<DocumentListPage> {
     }
   }
 
-  void _openShareDialog(DocumentModel document) {
-    showDialog<void>(
+  Future<void> _openShareDialog(DocumentModel document) async {
+    final permission = await getUserPermission(document.id);
+    if (!mounted) return;
+    if (permission != PermissionRole.owner) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Chỉ chủ sở hữu tài liệu mới có quyền chia sẻ'),
+        ),
+      );
+      return;
+    }
+
+    await showDialog<void>(
       context: context,
-      builder: (_) =>
-          ShareDialog(documentId: document.id, documentTitle: document.title),
+      builder: (_) => ShareDialog(
+        documentId: document.id,
+        documentTitle: document.title,
+        onShareChanged: () => _load(showLoading: false),
+      ),
     );
   }
 
@@ -173,11 +255,13 @@ class _DocumentListPageState extends State<DocumentListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openForm(),
-        icon: const Icon(Icons.add),
-        label: const Text('Thêm'),
-      ),
+      floatingActionButton: _showShared
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => _openForm(),
+              icon: const Icon(Icons.add),
+              label: const Text('Thêm'),
+            ),
       body: Column(
         children: [
           Padding(
@@ -187,6 +271,8 @@ class _DocumentListPageState extends State<DocumentListPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  _buildTabSelector(),
+                  const SizedBox(height: 12),
                   _SearchField(
                     controller: _searchController,
                     onChanged: _onSearchChanged,
@@ -203,7 +289,7 @@ class _DocumentListPageState extends State<DocumentListPage> {
                             selected: _selectedCategoryId == null,
                             onSelected: () {
                               setState(() => _selectedCategoryId = null);
-                              _load(showLoading: false);
+                              if (!_showShared) _load(showLoading: false);
                             },
                           ),
                           for (final category in _categories) ...[
@@ -218,7 +304,7 @@ class _DocumentListPageState extends State<DocumentListPage> {
                                       ? null
                                       : category.id;
                                 });
-                                _load(showLoading: false);
+                                if (!_showShared) _load(showLoading: false);
                               },
                             ),
                           ],
@@ -236,7 +322,42 @@ class _DocumentListPageState extends State<DocumentListPage> {
     );
   }
 
+  Widget _buildTabSelector() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: SegmentedButton<bool>(
+        segments: const [
+          ButtonSegment(
+            value: false,
+            icon: Icon(Icons.folder_outlined, size: 18),
+            label: Text('Của tôi'),
+          ),
+          ButtonSegment(
+            value: true,
+            icon: Icon(Icons.people_outline, size: 18),
+            label: Text('Được chia sẻ'),
+          ),
+        ],
+        selected: {_showShared},
+        showSelectedIcon: false,
+        onSelectionChanged: (selection) => _switchTab(selection.first),
+      ),
+    );
+  }
+
   Widget _buildBody(BuildContext context) {
+    if (_showShared) {
+      if (_isLoadingShared && _sharedDocuments.isEmpty) {
+        return const AppLoadingView(
+          message: 'Đang tải tài liệu được chia sẻ...',
+        );
+      }
+      return RefreshIndicator(
+        onRefresh: () => _loadShared(showLoading: false),
+        child: _buildSharedContent(context),
+      );
+    }
+
     if (_isLoading) {
       return const AppLoadingView(message: 'Đang tải tài liệu...');
     }
@@ -244,6 +365,47 @@ class _DocumentListPageState extends State<DocumentListPage> {
     return RefreshIndicator(
       onRefresh: () => _load(showLoading: false),
       child: _buildContent(context),
+    );
+  }
+
+  Widget _buildSharedContent(BuildContext context) {
+    if (_sharedError != null) {
+      return AppErrorView(
+        title: 'Không tải được tài liệu được chia sẻ',
+        message: _sharedError!,
+        onRetry: _loadShared,
+        physics: const AlwaysScrollableScrollPhysics(),
+      );
+    }
+
+    final documents = _filteredSharedDocuments;
+    if (documents.isEmpty) {
+      return AppEmptyView(
+        icon: _hasFilter ? Icons.search_off : Icons.people_outline,
+        title: _hasFilter
+            ? 'Không tìm thấy tài liệu được chia sẻ phù hợp'
+            : 'Chưa có tài liệu được chia sẻ',
+        message: _hasFilter ? 'Thử từ khóa khác hoặc bỏ bộ lọc hiện tại.' : 'Khi chủ tài liệu chia sẻ quyền xem hoặc chỉnh sửa, tài liệu sẽ xuất hiện tại đây.',
+        actionLabel: _hasFilter ? 'Xóa bộ lọc' : null,
+        onAction: _hasFilter ? _clearFilters : null,
+        physics: const AlwaysScrollableScrollPhysics(),
+      );
+    }
+
+    return ContentWidth(
+      maxWidth: 1200,
+      child: DocumentGrid(
+        documents: documents,
+        padding: context.pagePadding.add(const EdgeInsets.only(bottom: 24)),
+        physics: const AlwaysScrollableScrollPhysics(),
+        onTap: _openDetail,
+        onEdit: (document) {
+          final role = _sharedRoles[document.id];
+          if (role == PermissionRole.editor) {
+            _openForm(document);
+          }
+        },
+      ),
     );
   }
 
