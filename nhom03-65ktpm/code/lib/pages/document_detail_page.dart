@@ -6,6 +6,7 @@ import '../colors.dart';
 import '../functions.dart';
 import '../services/supabase_service.dart';
 import '../struct/document_model.dart';
+import '../struct/permission_model.dart';
 import '../utils/responsive.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/share_dialog.dart';

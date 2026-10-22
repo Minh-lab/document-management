@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../functions.dart';
 import '../struct/category_model.dart';
 import '../struct/document_model.dart';
+import '../struct/permission_model.dart';
 import '../utils/responsive.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/document_grid.dart';
