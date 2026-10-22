@@ -28,6 +28,24 @@ CREATE TABLE IF NOT EXISTS documents (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- =============================================
+-- TAGS AND DOCUMENT-TAG RELATION
+-- =============================================
+CREATE TABLE IF NOT EXISTS tags (
+  id BIGSERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  color TEXT
+);
+
+CREATE TABLE IF NOT EXISTS document_tags (
+  document_id BIGINT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  tag_id BIGINT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  PRIMARY KEY (document_id, tag_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_tags_tag_id
+  ON document_tags(tag_id);
+
 -- Indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_documents_user_id ON documents(user_id);
 CREATE INDEX IF NOT EXISTS idx_documents_category_id ON documents(category_id);
@@ -38,6 +56,8 @@ CREATE INDEX IF NOT EXISTS idx_documents_created_at ON documents(created_at DESC
 -- =============================================
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tags ENABLE ROW LEVEL SECURITY;
+ALTER TABLE document_tags ENABLE ROW LEVEL SECURITY;
 
 -- Categories: everyone can read, only authenticated can insert (admin only in practice)
 CREATE POLICY "Categories are viewable by everyone" ON categories
@@ -55,6 +75,57 @@ CREATE POLICY "Users can update own documents" ON documents
 
 CREATE POLICY "Users can delete own documents" ON documents
   FOR DELETE USING (auth.uid()::text = user_id);
+
+-- Signed-in users share the tag library.
+DROP POLICY IF EXISTS "Authenticated users can read tags" ON tags;
+CREATE POLICY "Authenticated users can read tags" ON tags
+  FOR SELECT TO authenticated USING (true);
+
+DROP POLICY IF EXISTS "Authenticated users can create tags" ON tags;
+CREATE POLICY "Authenticated users can create tags" ON tags
+  FOR INSERT TO authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Authenticated users can update tags" ON tags;
+CREATE POLICY "Authenticated users can update tags" ON tags
+  FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Authenticated users can delete tags" ON tags;
+CREATE POLICY "Authenticated users can delete tags" ON tags
+  FOR DELETE TO authenticated USING (true);
+
+-- Users can manage tag links only for documents they own.
+DROP POLICY IF EXISTS "Users can read tags on own documents" ON document_tags;
+CREATE POLICY "Users can read tags on own documents" ON document_tags
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM documents
+      WHERE documents.id = document_tags.document_id
+        AND documents.user_id = auth.uid()::text
+    )
+  );
+
+DROP POLICY IF EXISTS "Users can add tags to own documents" ON document_tags;
+CREATE POLICY "Users can add tags to own documents" ON document_tags
+  FOR INSERT TO authenticated
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM documents
+      WHERE documents.id = document_tags.document_id
+        AND documents.user_id = auth.uid()::text
+    )
+  );
+
+DROP POLICY IF EXISTS "Users can remove tags from own documents" ON document_tags;
+CREATE POLICY "Users can remove tags from own documents" ON document_tags
+  FOR DELETE TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM documents
+      WHERE documents.id = document_tags.document_id
+        AND documents.user_id = auth.uid()::text
+    )
+  );
 
 -- =============================================
 -- TRIGGERS FOR updated_at

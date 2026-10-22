@@ -213,11 +213,13 @@ Future<List<CategoryModel>> getCategories() async {
 Future<List<DocumentModel>> getDocuments({
   String? keyword,
   int? categoryId,
+  Set<int>? documentIds,
 }) async {
   return await supabaseService.getDocuments(
     keyword: keyword,
     categoryId: categoryId,
     userId: currentUserId,
+    documentIds: documentIds,
   );
 }
 

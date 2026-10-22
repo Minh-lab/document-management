@@ -67,7 +67,10 @@ class SupabaseService {
     String? keyword,
     int? categoryId,
     String? userId,
+    Set<int>? documentIds,
   }) async {
+    if (documentIds != null && documentIds.isEmpty) return [];
+
     // Fetch documents first (without embedded join to allow filters)
     // Apply filters FIRST, then order
     // Use dynamic to avoid type issues with filter/order chain
@@ -81,6 +84,9 @@ class SupabaseService {
     }
     if (userId != null) {
       query = query.filter('user_id', 'eq', userId);
+    }
+    if (documentIds != null) {
+      query = query.filter('id', 'in', '(${documentIds.join(',')})');
     }
 
     // Apply order AFTER filters

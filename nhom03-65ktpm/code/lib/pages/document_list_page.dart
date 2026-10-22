@@ -4,15 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../functions.dart';
+import '../services/tag_service.dart';
 import '../struct/category_model.dart';
 import '../struct/document_model.dart';
+import '../struct/tag_model.dart';
 import '../utils/responsive.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/document_grid.dart';
 import '../widgets/share_dialog.dart';
-import '../widgets/state_views.dart';
 import 'document_detail_page.dart';
 import 'document_form_page.dart';
+import 'tag_management_page.dart';
 
 class DocumentListPage extends StatefulWidget {
   const DocumentListPage({super.key});
@@ -22,17 +24,26 @@ class DocumentListPage extends StatefulWidget {
 }
 
 class _DocumentListPageState extends State<DocumentListPage> {
-  final _searchController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
+  final TagService _tagService = TagService();
+
   Timer? _debounce;
-  List<DocumentModel> _documents = [];
-  List<CategoryModel> _categories = [];
-  int? _selectedCategoryId;
-  bool _isLoading = true;
-  String? _error;
   RealtimeChannel? _realtimeChannel;
 
+  List<DocumentModel> _documents = [];
+  List<CategoryModel> _categories = [];
+  List<TagModel> _tags = [];
+
+  int? _selectedCategoryId;
+  final Set<int> _selectedTagIds = {};
+
+  bool _isLoading = true;
+  String? _error;
+
   bool get _hasFilter =>
-      _searchController.text.trim().isNotEmpty || _selectedCategoryId != null;
+      _searchController.text.trim().isNotEmpty ||
+      _selectedCategoryId != null ||
+      _selectedTagIds.isNotEmpty;
 
   @override
   void initState() {
@@ -44,14 +55,18 @@ class _DocumentListPageState extends State<DocumentListPage> {
   @override
   void dispose() {
     _debounce?.cancel();
+
     final channel = _realtimeChannel;
-    if (channel != null) supabaseService.unsubscribe(channel);
+    if (channel != null) {
+      supabaseService.unsubscribe(channel);
+    }
+
     _searchController.dispose();
     super.dispose();
   }
 
   Future<void> _load({bool showLoading = true}) async {
-    if (showLoading) {
+    if (showLoading && mounted) {
       setState(() {
         _isLoading = true;
         _error = null;
@@ -59,23 +74,62 @@ class _DocumentListPageState extends State<DocumentListPage> {
     }
 
     try {
-      final results = await Future.wait([
-        getCategories(),
-        getDocuments(
-          keyword: _searchController.text.trim(),
-          categoryId: _selectedCategoryId,
-        ),
-      ]);
+      // Tai danh muc
+      final categories = await getCategories();
+
+      final keyword = _searchController.text.trim();
+
+      // Search document titles and tag names, then merge the matches.
+      final titleMatches = await getDocuments(
+        keyword: keyword,
+        categoryId: _selectedCategoryId,
+      );
+
+      final tags = await _tagService.getTags();
+      var loadedDocuments = titleMatches;
+
+      if (keyword.isNotEmpty) {
+        final matchingDocumentIds = await _tagService
+            .searchDocumentIdsByTagName(keyword);
+        if (matchingDocumentIds.isNotEmpty) {
+          final tagMatches = await getDocuments(
+            categoryId: _selectedCategoryId,
+            documentIds: matchingDocumentIds.toSet(),
+          );
+          final documentsById = {
+            for (final document in [...titleMatches, ...tagMatches])
+              document.id: document,
+          };
+          loadedDocuments = documentsById.values.toList()
+            ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        }
+      }
+
+      // A document matches when it has at least one selected tag.
+      if (_selectedTagIds.isNotEmpty) {
+        final documentIds = await _tagService.getDocumentIdsForTags(
+          _selectedTagIds,
+        );
+        loadedDocuments = loadedDocuments
+            .where((document) => documentIds.contains(document.id))
+            .toList();
+      }
 
       if (!mounted) return;
+
       setState(() {
-        _categories = results[0] as List<CategoryModel>;
-        _documents = results[1] as List<DocumentModel>;
+        _categories = categories;
+        _documents = loadedDocuments;
+        _tags = tags;
         _isLoading = false;
         _error = null;
       });
-    } catch (error) {
+    } catch (error, stackTrace) {
+      debugPrint('LOI TAI DU LIEU: $error');
+      debugPrint('$stackTrace');
+
       if (!mounted) return;
+
       setState(() {
         _error = error.toString().replaceFirst('Exception: ', '');
         _isLoading = false;
@@ -86,21 +140,48 @@ class _DocumentListPageState extends State<DocumentListPage> {
   void _setupRealtime() {
     _realtimeChannel = supabaseService.subscribeToDocuments(
       userId: currentUserId,
-      onDocumentsChanged: (_) => _load(showLoading: false),
+      onDocumentsChanged: (_) {
+        _load(showLoading: false);
+      },
     );
   }
 
   void _onSearchChanged(String _) {
     setState(() {});
+
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 350), () {
-      _load(showLoading: false);
+    _debounce = Timer(
+      const Duration(milliseconds: 350),
+      () => _load(showLoading: false),
+    );
+  }
+
+  void _selectCategory(int? categoryId) {
+    setState(() {
+      _selectedCategoryId = categoryId;
     });
+
+    _load();
+  }
+
+  void _toggleTag(int tagId) {
+    setState(() {
+      if (!_selectedTagIds.add(tagId)) {
+        _selectedTagIds.remove(tagId);
+      }
+    });
+
+    _load();
   }
 
   void _clearFilters() {
     _searchController.clear();
-    setState(() => _selectedCategoryId = null);
+
+    setState(() {
+      _selectedCategoryId = null;
+      _selectedTagIds.clear();
+    });
+
     _load();
   }
 
@@ -110,34 +191,53 @@ class _DocumentListPageState extends State<DocumentListPage> {
         builder: (_) => DocumentDetailPage(documentId: document.id),
       ),
     );
-    if (changed != false) _load(showLoading: false);
+
+    if (changed != false && mounted) {
+      _load(showLoading: false);
+    }
   }
 
   Future<void> _openForm([DocumentModel? document]) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => DocumentFormPage(document: document)),
     );
-    if (changed != false) _load(showLoading: false);
+
+    if (changed != false && mounted) {
+      _load(showLoading: false);
+    }
+  }
+
+  Future<void> _openTagManagement() async {
+    await Navigator.of(
+      context,
+    ).push<void>(MaterialPageRoute(builder: (_) => const TagManagementPage()));
+    if (mounted) await _load(showLoading: false);
   }
 
   Future<void> _deleteDocument(DocumentModel document) async {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) => const ConfirmDialog(
+      builder: (_) => ConfirmDialog(
         title: 'Xóa tài liệu',
-        content: 'Bạn có chắc chắn muốn xóa tài liệu này không?',
+        content:
+            'Bạn có chắc chắn muốn xóa tài liệu "${document.title}" không?',
       ),
     );
+
     if (confirmed != true) return;
 
     try {
       await deleteDocument(document.id, storagePath: document.storagePath);
+
       if (!mounted) return;
+
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Đã xóa tài liệu')));
+
       _load(showLoading: false);
     } catch (error) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Không thể xóa tài liệu: $error')));
@@ -159,7 +259,7 @@ class _DocumentListPageState extends State<DocumentListPage> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _openForm(),
         icon: const Icon(Icons.add),
-        label: const Text('Thêm'),
+        label: const Text('Thêm tài liệu'),
       ),
       body: Column(
         children: [
@@ -175,8 +275,18 @@ class _DocumentListPageState extends State<DocumentListPage> {
                     onChanged: _onSearchChanged,
                     onClear: _hasFilter ? _clearFilters : null,
                   ),
+
+                  // Loc theo danh muc
                   if (_categories.isNotEmpty) ...[
                     const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Lọc theo danh mục',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: Row(
@@ -184,10 +294,7 @@ class _DocumentListPageState extends State<DocumentListPage> {
                           _CategoryChip(
                             label: 'Tất cả',
                             selected: _selectedCategoryId == null,
-                            onSelected: () {
-                              setState(() => _selectedCategoryId = null);
-                              _load(showLoading: false);
-                            },
+                            onSelected: () => _selectCategory(null),
                           ),
                           for (final category in _categories) ...[
                             const SizedBox(width: 8),
@@ -195,14 +302,48 @@ class _DocumentListPageState extends State<DocumentListPage> {
                               label: category.name,
                               selected: _selectedCategoryId == category.id,
                               onSelected: () {
-                                setState(() {
-                                  _selectedCategoryId =
-                                      _selectedCategoryId == category.id
+                                _selectCategory(
+                                  _selectedCategoryId == category.id
                                       ? null
-                                      : category.id;
-                                });
-                                _load(showLoading: false);
+                                      : category.id,
+                                );
                               },
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Lọc theo Tag',
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ),
+                      TextButton.icon(
+                        onPressed: _openTagManagement,
+                        icon: const Icon(Icons.sell_outlined, size: 18),
+                        label: const Text('Quản lý tag'),
+                      ),
+                    ],
+                  ),
+
+                  // Loc theo Tag
+                  if (_tags.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: Row(
+                        children: [
+                          for (final tag in _tags) ...[
+                            const SizedBox(width: 8),
+                            FilterChip(
+                              label: Text('#${tag.name}'),
+                              selected: _selectedTagIds.contains(tag.id),
+                              onSelected: (_) => _toggleTag(tag.id),
                             ),
                           ],
                         ],
@@ -221,28 +362,68 @@ class _DocumentListPageState extends State<DocumentListPage> {
 
   Widget _buildBody(BuildContext context) {
     if (_isLoading) {
-      return const AppLoadingView(message: 'Đang tải tài liệu...');
+      return const Center(child: CircularProgressIndicator());
     }
 
     if (_error != null) {
-      return AppErrorView(
-        title: 'Không tải được danh sách',
-        message: _error!,
-        onRetry: _load,
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.error_outline, size: 48, color: Colors.red),
+              const SizedBox(height: 12),
+              const Text(
+                'Không thể tải danh sách tài liệu',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(_error!, textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                onPressed: () => _load(),
+                icon: const Icon(Icons.refresh),
+                label: const Text('Thử lại'),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
     if (_documents.isEmpty) {
-      return AppEmptyView(
-        icon: _hasFilter ? Icons.search_off : Icons.folder_open,
-        title: _hasFilter
-            ? 'Không tìm thấy tài liệu phù hợp'
-            : 'Bạn chưa có tài liệu nào',
-        message: _hasFilter
-            ? 'Thử từ khóa khác hoặc bỏ bộ lọc hiện tại.'
-            : 'Nhấn "Thêm" để tạo tài liệu đầu tiên của bạn.',
-        actionLabel: _hasFilter ? 'Xóa bộ lọc' : 'Thêm tài liệu',
-        onAction: _hasFilter ? _clearFilters : () => _openForm(),
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.folder_open, size: 56, color: Colors.grey),
+              const SizedBox(height: 12),
+              Text(
+                _hasFilter
+                    ? 'Không tìm thấy tài liệu phù hợp'
+                    : 'Chưa có tài liệu',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _hasFilter
+                    ? 'Thử thay đổi từ khóa, danh mục hoặc Tag.'
+                    : 'Nhấn Thêm tài liệu để bắt đầu.',
+                textAlign: TextAlign.center,
+              ),
+              if (_hasFilter) ...[
+                const SizedBox(height: 16),
+                OutlinedButton(
+                  onPressed: _clearFilters,
+                  child: const Text('Xóa bộ lọc'),
+                ),
+              ],
+            ],
+          ),
+        ),
       );
     }
 
@@ -282,7 +463,7 @@ class _SearchField extends StatelessWidget {
       onChanged: onChanged,
       textInputAction: TextInputAction.search,
       decoration: InputDecoration(
-        hintText: 'Tìm kiếm theo tiêu đề...',
+        hintText: 'Tìm theo tiêu đề hoặc tên tag...',
         prefixIcon: const Icon(Icons.search),
         suffixIcon: controller.text.isEmpty
             ? null
