@@ -76,56 +76,40 @@ CREATE POLICY "Users can update own documents" ON documents
 CREATE POLICY "Users can delete own documents" ON documents
   FOR DELETE USING (auth.uid()::text = user_id);
 
--- Signed-in users share the tag library.
-DROP POLICY IF EXISTS "Authenticated users can read tags" ON tags;
-CREATE POLICY "Authenticated users can read tags" ON tags
-  FOR SELECT TO authenticated USING (true);
+-- TẠM THỜI: ứng dụng đang dùng Firebase Auth + anon key nên chưa có auth.uid().
+-- Cho phép anon đọc/ghi tag để tính năng hoạt động; khi tích hợp Supabase JWT
+-- hoặc PostgREST x-user-id, thay các policy dưới đây bằng policy theo người dùng.
+GRANT SELECT, INSERT, UPDATE, DELETE
+  ON public.tags, public.document_tags TO anon, authenticated;
+GRANT USAGE, SELECT ON SEQUENCE public.tags_id_seq TO anon, authenticated;
 
-DROP POLICY IF EXISTS "Authenticated users can create tags" ON tags;
-CREATE POLICY "Authenticated users can create tags" ON tags
-  FOR INSERT TO authenticated WITH CHECK (true);
+DROP POLICY IF EXISTS "Authenticated users can read tags" ON public.tags;
+CREATE POLICY "Authenticated users can read tags" ON public.tags
+  FOR SELECT TO anon, authenticated USING (true);
 
-DROP POLICY IF EXISTS "Authenticated users can update tags" ON tags;
-CREATE POLICY "Authenticated users can update tags" ON tags
-  FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Authenticated users can create tags" ON public.tags;
+CREATE POLICY "Authenticated users can create tags" ON public.tags
+  FOR INSERT TO anon, authenticated WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Authenticated users can delete tags" ON tags;
-CREATE POLICY "Authenticated users can delete tags" ON tags
-  FOR DELETE TO authenticated USING (true);
+DROP POLICY IF EXISTS "Authenticated users can update tags" ON public.tags;
+CREATE POLICY "Authenticated users can update tags" ON public.tags
+  FOR UPDATE TO anon, authenticated USING (true) WITH CHECK (true);
 
--- Users can manage tag links only for documents they own.
-DROP POLICY IF EXISTS "Users can read tags on own documents" ON document_tags;
-CREATE POLICY "Users can read tags on own documents" ON document_tags
-  FOR SELECT TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM documents
-      WHERE documents.id = document_tags.document_id
-        AND documents.user_id = auth.uid()::text
-    )
-  );
+DROP POLICY IF EXISTS "Authenticated users can delete tags" ON public.tags;
+CREATE POLICY "Authenticated users can delete tags" ON public.tags
+  FOR DELETE TO anon, authenticated USING (true);
 
-DROP POLICY IF EXISTS "Users can add tags to own documents" ON document_tags;
-CREATE POLICY "Users can add tags to own documents" ON document_tags
-  FOR INSERT TO authenticated
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM documents
-      WHERE documents.id = document_tags.document_id
-        AND documents.user_id = auth.uid()::text
-    )
-  );
+DROP POLICY IF EXISTS "Users can read tags on own documents" ON public.document_tags;
+CREATE POLICY "Users can read tags on own documents" ON public.document_tags
+  FOR SELECT TO anon, authenticated USING (true);
 
-DROP POLICY IF EXISTS "Users can remove tags from own documents" ON document_tags;
-CREATE POLICY "Users can remove tags from own documents" ON document_tags
-  FOR DELETE TO authenticated
-  USING (
-    EXISTS (
-      SELECT 1 FROM documents
-      WHERE documents.id = document_tags.document_id
-        AND documents.user_id = auth.uid()::text
-    )
-  );
+DROP POLICY IF EXISTS "Users can add tags to own documents" ON public.document_tags;
+CREATE POLICY "Users can add tags to own documents" ON public.document_tags
+  FOR INSERT TO anon, authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Users can remove tags from own documents" ON public.document_tags;
+CREATE POLICY "Users can remove tags from own documents" ON public.document_tags
+  FOR DELETE TO anon, authenticated USING (true);
 
 -- =============================================
 -- TRIGGERS FOR updated_at
