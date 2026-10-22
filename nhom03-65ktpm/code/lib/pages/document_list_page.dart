@@ -121,6 +121,23 @@ class _DocumentListPageState extends State<DocumentListPage> {
   }
 
   Future<void> _deleteDocument(DocumentModel document) async {
+    if (currentUserId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Bạn cần đăng nhập để xóa')),
+      );
+      return;
+    }
+    final permission = await supabaseService.getUserPermission(
+      document.id,
+      currentUserId,
+    );
+    if (permission != PermissionRole.owner) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chỉ chủ sở hữu tài liệu mới có quyền xóa')),
+      );
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => const ConfirmDialog(
