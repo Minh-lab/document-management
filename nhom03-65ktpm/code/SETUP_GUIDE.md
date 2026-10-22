@@ -78,7 +78,8 @@ Thêm vào `web/index.html` trước `</head>`:
 
 > Nếu database đã được tạo trước đó và bạn chỉ cần bổ sung chức năng tag, chạy
 > file `supabase_tags_schema.sql` trong SQL Editor. Script tạo `tags`,
-> `document_tags`, bật RLS và cấp quyền thao tác tag cho người dùng đã đăng nhập.
+> `document_tags`, bật RLS và tạm cấp quyền thao tác tag cho `anon`/`authenticated`
+> (do app đang dùng Firebase Auth + anon key, chưa có Supabase JWT).
 
 ### 2.3 Lấy API Keys
 Settings → API:
