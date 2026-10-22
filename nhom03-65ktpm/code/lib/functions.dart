@@ -14,7 +14,9 @@ import 'struct/document_model.dart';
 import 'struct/user_model.dart';
 import 'struct/permission_model.dart';
 import 'struct/notification_model.dart';
+import 'struct/recommendation_model.dart';
 import 'struct/document_location_model.dart';
+import 'utils/recommendation_scorer.dart';
 
 export 'struct/category_model.dart';
 export 'struct/document_model.dart';
@@ -318,7 +320,8 @@ Future<DocumentModel> updateDocument({
     throw Exception('Bạn cần đăng nhập để chỉnh sửa tài liệu');
   }
   final permission = await supabaseService.getUserPermission(id, currentUserId);
-  if (permission != PermissionRole.owner && permission != PermissionRole.editor) {
+  if (permission != PermissionRole.owner &&
+      permission != PermissionRole.editor) {
     throw Exception('Bạn không có quyền chỉnh sửa tài liệu này');
   }
 
@@ -568,6 +571,49 @@ Future<void> createNotification({
     type: type,
     documentId: documentId,
   );
+}
+
+// ==================== RECOMMENDATION (UC-11) ====================
+
+/// Gợi ý tối đa [limit] tài liệu cho người dùng hiện tại, kèm lý do.
+Future<List<RecommendationModel>> getRecommendations({int limit = 5}) async {
+  if (currentUserId.isEmpty) return [];
+  final results = await Future.wait([
+    supabaseService.getUserInterests(currentUserId),
+    supabaseService.getRecommendationCandidates(currentUserId),
+  ]);
+  return rankRecommendations(
+    interests: results[0] as Map<String, double>,
+    candidates: results[1] as List<RecommendationCandidate>,
+    limit: limit,
+  );
+}
+
+/// Ghi nhận người dùng mở tài liệu: lưu lượt xem và tăng sở thích theo tag.
+/// Lỗi (ví dụ chưa chạy SQL) không được làm hỏng màn hình chi tiết.
+Future<void> recordDocumentView(int documentId) async {
+  if (currentUserId.isEmpty) return;
+  try {
+    await supabaseService.recordDocumentView(
+      userId: currentUserId,
+      documentId: documentId,
+    );
+  } catch (error) {
+    debugPrint('⚠️ Không ghi được lượt xem: $error');
+  }
+}
+
+/// Gọi sau khi người dùng gán tag cho tài liệu (UC-06) để tăng sở thích.
+Future<void> recordTagging(List<int> tagIds) async {
+  if (currentUserId.isEmpty) return;
+  try {
+    await supabaseService.bumpTagInterests(
+      userId: currentUserId,
+      tagIds: tagIds,
+    );
+  } catch (error) {
+    debugPrint('⚠️ Không cập nhật được sở thích: $error');
+  }
 }
 
 // ==================== DOCUMENT LOCATIONS ====================
