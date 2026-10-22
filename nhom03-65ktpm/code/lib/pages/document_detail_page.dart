@@ -32,6 +32,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
   void initState() {
     super.initState();
     _load();
+    recordDocumentView(widget.documentId); // UC-11: lượt xem + sở thích
   }
 
   /// Kiểm tra xem user có quyền xem tài liệu không
