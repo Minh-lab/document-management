@@ -30,6 +30,12 @@ class UserMenuButton extends StatelessWidget {
               onOpenSettings?.call();
             } else if (value == 'logout') {
               await confirmAndSignOut(context);
+            } else if (value == 'upgrade_email') {
+              if (!context.mounted) return;
+              _showUpgradeDialog(context, isGoogle: false);
+            } else if (value == 'upgrade_google') {
+              if (!context.mounted) return;
+              _showUpgradeDialog(context, isGoogle: true);
             }
           },
           itemBuilder: (context) => [
@@ -71,6 +77,33 @@ class UserMenuButton extends StatelessWidget {
               ),
             ),
             const PopupMenuDivider(),
+            if (user.isAnonymous) ...[
+              const PopupMenuItem<String>(
+                value: 'upgrade_email',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    Icons.upgrade_outlined,
+                    color: AppColors.primary,
+                  ),
+                  title: Text('Nâng cấp bằng Email'),
+                ),
+              ),
+              const PopupMenuItem<String>(
+                value: 'upgrade_google',
+                child: ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    Icons.g_mobiledata,
+                    color: AppColors.primary,
+                  ),
+                  title: Text('Nâng cấp bằng Google'),
+                ),
+              ),
+              const PopupMenuDivider(),
+            ],
             if (onOpenSettings != null)
               const PopupMenuItem<String>(
                 value: 'settings',
@@ -188,4 +221,172 @@ class _Avatar extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Dialog nâng cấp tài khoản ẩn danh
+Future<void> _showUpgradeDialog(BuildContext context, {required bool isGoogle}) async {
+  if (isGoogle) {
+    // Nâng cấp bằng Google
+    try {
+      final credential = await upgradeAnonymousToGoogle();
+      if (credential == null) return; // User cancelled
+    } catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Nâng cấp thất bại: $error')),
+      );
+    }
+    return;
+  }
+
+  // Nâng cấp bằng Email - hiển thị form nhập email/password
+  final emailController = TextEditingController();
+  final passwordController = TextEditingController();
+  final confirmController = TextEditingController();
+  final nameController = TextEditingController();
+  bool obscure = true;
+  bool isLoading = false;
+  String? error;
+
+  await showDialog<void>(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: const Text('Nâng cấp tài khoản'),
+        content: SingleChildScrollView(
+          child: Form(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Nhập thông tin để chuyển tài khoản dùng thử thành tài khoản chính thức.',
+                  style: TextStyle(color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Họ tên (tùy chọn)',
+                    prefixIcon: Icon(Icons.person_outline),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  autofillHints: const [AutofillHints.email],
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    hintText: 'you@example.com',
+                    prefixIcon: Icon(Icons.mail_outline),
+                  ),
+                  validator: (value) {
+                    final email = value?.trim() ?? '';
+                    if (email.isEmpty) return 'Vui lòng nhập email';
+                    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
+                      return 'Email không hợp lệ';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: passwordController,
+                  obscureText: obscure,
+                  autofillHints: const [AutofillHints.newPassword],
+                  decoration: InputDecoration(
+                    labelText: 'Mật khẩu',
+                    prefixIcon: const Icon(Icons.lock_outline),
+                    suffixIcon: IconButton(
+                      icon: Icon(obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined),
+                      onPressed: () => setState(() => obscure = !obscure),
+                    ),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'Vui lòng nhập mật khẩu';
+                    if (value.length < 6) return 'Mật khẩu ít nhất 6 ký tự';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: confirmController,
+                  obscureText: obscure,
+                  decoration: const InputDecoration(
+                    labelText: 'Nhập lại mật khẩu',
+                    prefixIcon: Icon(Icons.lock_reset_outlined),
+                  ),
+                  validator: (value) {
+                    if (value != passwordController.text) return 'Mật khẩu không khớp';
+                    return null;
+                  },
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFDECEC),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFF5C2C2)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.error_outline, color: AppColors.error, size: 20),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            error!,
+                            style: const TextStyle(color: AppColors.error, fontSize: 13),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: isLoading ? null : () => Navigator.pop(context),
+            child: const Text('Hủy'),
+          ),
+          FilledButton(
+            onPressed: isLoading
+                ? null
+                : () async {
+                    final formState = Form.of(context);
+                    if (!formState.validate()) return;
+
+                    setState(() => isLoading = true);
+                    try {
+                      await upgradeAnonymousToEmail(
+                        email: emailController.text,
+                        password: passwordController.text,
+                        displayName: nameController.text.isNotEmpty ? nameController.text : null,
+                      );
+                      if (!context.mounted) return;
+                      Navigator.pop(context);
+                    } catch (e) {
+                      setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+                    } finally {
+                      if (context.mounted) setState(() => isLoading = false);
+                    }
+                  },
+            child: isLoading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('Nâng cấp'),
+          ),
+        ],
+      ),
+    ),
+  );
 }

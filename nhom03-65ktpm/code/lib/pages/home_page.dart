@@ -47,9 +47,9 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool showLoading = true}) async {
     setState(() {
-      _isLoading = _documents.isEmpty;
+      _isLoading = showLoading && _documents.isEmpty;
       _error = null;
     });
     _loadRecommendations();
@@ -189,7 +189,7 @@ class _HomePageState extends State<HomePage> {
     }
 
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: () => _load(showLoading: false),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: context.pagePadding,

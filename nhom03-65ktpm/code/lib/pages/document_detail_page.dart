@@ -68,10 +68,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
   /// Kiểm tra xem user có quyền xem tài liệu không
   Future<bool> _hasDocumentPermission() async {
     if (currentUserId.isEmpty) return false;
-    final permission = await supabaseService.getUserPermission(
-      widget.documentId,
-      currentUserId,
-    );
+    final permission = await getUserPermission(widget.documentId);
     // Owner và editor có quyền xem, viewer cũng có quyền xem
     return permission != null &&
         (permission == PermissionRole.owner ||
@@ -112,10 +109,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
       );
       return;
     }
-    final permission = await supabaseService.getUserPermission(
-      widget.documentId,
-      currentUserId,
-    );
+    final permission = await getUserPermission(widget.documentId);
     if (permission != PermissionRole.owner &&
         permission != PermissionRole.editor) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -145,10 +139,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
       ).showSnackBar(const SnackBar(content: Text('Bạn cần đăng nhập để xóa')));
       return;
     }
-    final permission = await supabaseService.getUserPermission(
-      widget.documentId,
-      currentUserId,
-    );
+    final permission = await getUserPermission(widget.documentId);
     if (permission != PermissionRole.owner) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -201,10 +192,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
       );
       return;
     }
-    final permission = await supabaseService.getUserPermission(
-      widget.documentId,
-      currentUserId,
-    );
+    final permission = await getUserPermission(widget.documentId);
     if (permission != PermissionRole.owner &&
         permission != PermissionRole.editor &&
         permission != PermissionRole.viewer) {
