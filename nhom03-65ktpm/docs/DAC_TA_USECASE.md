@@ -307,8 +307,9 @@ graph LR
 **Ngoại lệ:**
 - *8c. Không tìm thấy người dùng:* Hiển thị "Không tìm thấy người dùng" và giữ nguyên danh sách quyền.
 - *8d. Chia sẻ cho chính mình:* Hệ thống chặn và thông báo không hợp lệ.
+- *8e. Cố cấp quyền chủ sở hữu:* Hệ thống chặn; quyền chủ sở hữu chỉ thuộc người tạo tài liệu (`documents.user_id`) và không thể chuyển qua hộp thoại chia sẻ.
 
-**Tiêu chí chấp nhận:** Người có quyền `viewer` chỉ xem được; `editor` sửa được nhưng không xóa được; chủ sở hữu luôn giữ toàn quyền.
+**Tiêu chí chấp nhận:** Người có quyền `viewer` chỉ xem được; `editor` sửa được nhưng không xóa và không chia sẻ được; chủ sở hữu luôn giữ toàn quyền; tài liệu được chia sẻ xuất hiện trong mục "Được chia sẻ" của người nhận.
 
 ---
 

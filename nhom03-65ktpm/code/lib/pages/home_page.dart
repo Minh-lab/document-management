@@ -88,7 +88,9 @@ class _HomePageState extends State<HomePage> {
     final doc = item.document;
     if (doc.canOpen) {
       await Navigator.of(context).push<bool>(
-        MaterialPageRoute(builder: (_) => DocumentDetailPage(documentId: doc.id)),
+        MaterialPageRoute(
+          builder: (_) => DocumentDetailPage(documentId: doc.id),
+        ),
       );
       _load();
       return;
@@ -143,6 +145,17 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _deleteDocument(DocumentModel document) async {
+    final permission = await getUserPermission(document.id);
+    if (!mounted) return;
+    if (permission != PermissionRole.owner) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Chỉ chủ sở hữu tài liệu mới có quyền xóa'),
+        ),
+      );
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => const ConfirmDialog(
@@ -166,11 +179,25 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _openShareDialog(DocumentModel document) {
-    showDialog<void>(
+  Future<void> _openShareDialog(DocumentModel document) async {
+    final permission = await getUserPermission(document.id);
+    if (!mounted) return;
+    if (permission != PermissionRole.owner) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Chỉ chủ sở hữu tài liệu mới có quyền chia sẻ'),
+        ),
+      );
+      return;
+    }
+
+    await showDialog<void>(
       context: context,
-      builder: (_) =>
-          ShareDialog(documentId: document.id, documentTitle: document.title),
+      builder: (_) => ShareDialog(
+        documentId: document.id,
+        documentTitle: document.title,
+        onShareChanged: () => _load(),
+      ),
     );
   }
 

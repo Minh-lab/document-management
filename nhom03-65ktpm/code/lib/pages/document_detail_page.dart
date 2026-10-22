@@ -4,12 +4,17 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../colors.dart';
 import '../functions.dart';
+import '../services/tag_service.dart';
+import '../struct/document_model.dart';
+import '../struct/tag_model.dart';
 import '../utils/responsive.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/share_dialog.dart';
 import '../widgets/state_views.dart';
 import 'document_form_page.dart';
+import 'file_viewer_page.dart';
 import 'location_picker_page.dart';
+import 'tag_management_page.dart';
 
 class DocumentDetailPage extends StatefulWidget {
   const DocumentDetailPage({super.key, required this.documentId});
@@ -23,16 +28,31 @@ class DocumentDetailPage extends StatefulWidget {
 class _DocumentDetailPageState extends State<DocumentDetailPage> {
   DocumentModel? _document;
   DocumentLocationModel? _location;
+  PermissionRole? _permission;
   bool _isLoading = true;
   bool _changed = false;
   String? _error;
+
+  bool get _canEdit =>
+      _permission == PermissionRole.owner ||
+      _permission == PermissionRole.editor;
+
+  bool get _isOwner => _permission == PermissionRole.owner;
+
+  // Quản lý Tag
+  final TagService _tagService = TagService();
+
+  List<TagModel> _allTags = [];
+  List<TagModel> _documentTags = [];
+  Set<int> _selectedTagIds = {};
+
+  bool _isLoadingTags = false;
+  bool _isSavingTags = false;
 
   @override
   void initState() {
     super.initState();
     _load();
-    recordDocumentView(widget.documentId); // UC-11: lượt xem + sở thích
-    _loadLocation();
   }
 
   Future<void> _loadLocation() async {
@@ -41,6 +61,14 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
   }
 
   Future<void> _editLocation() async {
+    if (!_canEdit) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bạn không có quyền chỉnh sửa vị trí tài liệu này'),
+        ),
+      );
+      return;
+    }
     final result = await Navigator.of(context).push<DocumentLocationModel?>(
       MaterialPageRoute(
         builder: (_) => LocationPickerPage(
@@ -49,7 +77,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
         ),
       ),
     );
-    // result == null means deleted, otherwise updated
+    // result == null nghĩa là đã xóa, ngược lại là đã cập nhật
     if (mounted) {
       setState(() => _location = result);
       if (!mounted) return;
@@ -65,36 +93,44 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     }
   }
 
-  /// Kiểm tra xem user có quyền xem tài liệu không
-  Future<bool> _hasDocumentPermission() async {
-    if (currentUserId.isEmpty) return false;
-    final permission = await getUserPermission(widget.documentId);
-    // Owner và editor có quyền xem, viewer cũng có quyền xem
-    return permission != null &&
-        (permission == PermissionRole.owner ||
-            permission == PermissionRole.editor ||
-            permission == PermissionRole.viewer);
-  }
-
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
-    // Kiểm tra quyền trước khi tải
-    final hasPermission = await _hasDocumentPermission();
-    if (!hasPermission && !mounted) return;
+    // Kiểm tra quyền trước khi tải nội dung tài liệu.
+    final permission = await getUserPermission(widget.documentId);
+    if (!mounted) return;
+    if (permission == null) {
+      setState(() {
+        _permission = null;
+        _document = null;
+        _isLoading = false;
+        _error = null;
+      });
+      return;
+    }
 
     try {
       final document = await getDocumentById(widget.documentId);
+
       if (!mounted) return;
+
       setState(() {
         _document = document;
+        _permission = permission;
         _isLoading = false;
       });
+      // Chỉ ghi nhận lượt xem sau khi đã xác thực quyền truy cập.
+      recordDocumentView(widget.documentId); // UC-11: lượt xem + sở thích
+      _loadLocation();
+      // Tải danh sách tag và tag đã gán cho tài liệu.
+      await _loadTags();
     } catch (error) {
       if (!mounted) return;
+
       setState(() {
         _error = error.toString().replaceFirst('Exception: ', '');
         _isLoading = false;
@@ -102,6 +138,103 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     }
   }
 
+  // Tai danh sach Tag va Tag da gan cho tai lieu
+  Future<void> _loadTags() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoadingTags = true;
+    });
+
+    try {
+      final results = await Future.wait([
+        _tagService.getTags(),
+        _tagService.getTagsForDocument(widget.documentId),
+      ]);
+
+      final allTags = results[0];
+      final documentTags = results[1];
+
+      if (!mounted) return;
+
+      setState(() {
+        _allTags = allTags;
+        _documentTags = documentTags;
+        _selectedTagIds = documentTags.map((tag) => tag.id).toSet();
+        _isLoadingTags = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoadingTags = false;
+      });
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Không tải được Tag: $error')));
+    }
+  }
+
+  // Lưu các Tag được chọn
+  Future<void> _saveTags() async {
+    if (!_canEdit) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bạn không có quyền chỉnh sửa tag của tài liệu này'),
+        ),
+      );
+      return;
+    }
+    if (_isSavingTags || _isLoadingTags) return;
+
+    setState(() {
+      _isSavingTags = true;
+    });
+
+    try {
+      await _tagService.setDocumentTags(
+        documentId: widget.documentId,
+        tagIds: _selectedTagIds.toList(),
+      );
+
+      // Cập nhật sở thích theo tag để phục vụ Recommendation (UC-11).
+      try {
+        await recordTagging(_selectedTagIds.toList());
+      } catch (error) {
+        debugPrint('⚠️ Không cập nhật được sở thích tag: $error');
+      }
+
+      await _loadTags();
+
+      if (!mounted) return;
+
+      _changed = true;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Đã lưu Tag cho tài liệu!')));
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Lưu Tag thất bại: $error')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSavingTags = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _manageTags() async {
+    await Navigator.of(
+      context,
+    ).push<void>(MaterialPageRoute(builder: (_) => const TagManagementPage()));
+    if (mounted) await _loadTags();
+  }
+
+  // Chinh sua tai lieu
   Future<void> _edit() async {
     if (currentUserId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -109,9 +242,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
       );
       return;
     }
-    final permission = await getUserPermission(widget.documentId);
-    if (permission != PermissionRole.owner &&
-        permission != PermissionRole.editor) {
+    if (!_canEdit) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Bạn không có quyền chỉnh sửa tài liệu này'),
@@ -126,12 +257,14 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => DocumentFormPage(document: document)),
     );
+
     if (changed == true) {
       _changed = true;
-      _load();
+      await _load();
     }
   }
 
+  // Xoa tai lieu
   Future<void> _delete() async {
     if (currentUserId.isEmpty) {
       ScaffoldMessenger.of(
@@ -139,8 +272,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
       ).showSnackBar(const SnackBar(content: Text('Bạn cần đăng nhập để xóa')));
       return;
     }
-    final permission = await getUserPermission(widget.documentId);
-    if (permission != PermissionRole.owner) {
+    if (!_isOwner) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Chỉ chủ sở hữu tài liệu mới có quyền xóa'),
@@ -159,32 +291,51 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
         content: 'Bạn có chắc chắn muốn xóa tài liệu này không?',
       ),
     );
+
     if (confirmed != true) return;
 
     try {
       await deleteDocument(document.id, storagePath: document.storagePath);
+
       if (!mounted) return;
+
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Đã xóa tài liệu')));
+
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Không thể xóa tài liệu: $error')));
     }
   }
 
+  // Chia se tai lieu
   void _share() {
+    if (!_isOwner) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Chỉ chủ sở hữu tài liệu mới có quyền chia sẻ'),
+        ),
+      );
+      return;
+    }
     final document = _document;
     if (document == null) return;
+
     showDialog<void>(
       context: context,
-      builder: (_) =>
-          ShareDialog(documentId: document.id, documentTitle: document.title),
+      builder: (_) => ShareDialog(
+        documentId: document.id,
+        documentTitle: document.title,
+        onShareChanged: () => _load(),
+      ),
     );
   }
 
+  // Mo tep dinh kem
   Future<void> _openFile() async {
     if (currentUserId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -192,10 +343,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
       );
       return;
     }
-    final permission = await getUserPermission(widget.documentId);
-    if (permission != PermissionRole.owner &&
-        permission != PermissionRole.editor &&
-        permission != PermissionRole.viewer) {
+    if (_permission == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Bạn không có quyền xem tài liệu này')),
       );
@@ -203,23 +351,16 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     }
 
     final document = _document;
-    final url = document?.openUrl;
-    if (document == null || url == null || url.isEmpty) {
+    if (document == null || !document.hasAttachment) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Tài liệu này không có tệp đính kèm')),
       );
       return;
     }
 
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-      return;
-    }
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Không thể mở tệp này')));
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => FileViewerPage(document: document)),
+    );
   }
 
   void _goBack() {
@@ -237,41 +378,46 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
         title: const Text('Chi tiết tài liệu'),
         actions: [
           if (_document != null) ...[
-            IconButton(
-              tooltip: 'Chỉnh sửa',
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: _edit,
-            ),
-            PopupMenuButton<String>(
-              tooltip: 'Tùy chọn',
-              onSelected: (value) {
-                if (value == 'share') _share();
-                if (value == 'delete') _delete();
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                  value: 'share',
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.share_outlined),
-                    title: Text('Chia sẻ'),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'delete',
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.delete_outline, color: AppColors.error),
-                    title: Text(
-                      'Xóa tài liệu',
-                      style: TextStyle(color: AppColors.error),
+            if (_canEdit)
+              IconButton(
+                tooltip: 'Chỉnh sửa',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: _edit,
+              ),
+            if (_isOwner)
+              PopupMenuButton<String>(
+                tooltip: 'Tùy chọn',
+                onSelected: (value) {
+                  if (value == 'share') _share();
+                  if (value == 'delete') _delete();
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'share',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.share_outlined),
+                      title: Text('Chia sẻ'),
                     ),
                   ),
-                ),
-              ],
-            ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        Icons.delete_outline,
+                        color: AppColors.error,
+                      ),
+                      title: Text(
+                        'Xóa tài liệu',
+                        style: TextStyle(color: AppColors.error),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             const SizedBox(width: 8),
           ],
         ],
@@ -294,12 +440,13 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     }
 
     final document = _document;
+
     if (document == null) {
       return AppEmptyView(
         icon: Icons.folder_off_outlined,
         title: 'Tài liệu không tồn tại',
         message: 'Tài liệu có thể đã bị xóa hoặc bạn không có quyền xem.',
-        actionLabel: 'Quay lại',
+        actionLabel: 'Quay lai',
         onAction: _goBack,
       );
     }
@@ -319,10 +466,123 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
               _buildLocationCard(context),
               const SizedBox(height: 16),
               _buildInfoCard(context, document),
+              const SizedBox(height: 16),
+              _buildTagsCard(context),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  // Hiển thị khu vực chọn Tag
+  Widget _buildTagsCard(BuildContext context) {
+    final visibleTags = _canEdit ? _allTags : _documentTags;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.sell_outlined),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Phân loại bằng Tag',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (_canEdit)
+                  TextButton(
+                    onPressed: _manageTags,
+                    child: const Text('Quản lý'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _canEdit
+                  ? 'Chọn một hoặc nhiều thẻ phù hợp với tài liệu.'
+                  : 'Các thẻ đã gán cho tài liệu.',
+              style: const TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
+
+            if (_isLoadingTags)
+              const Center(child: CircularProgressIndicator())
+            else if (visibleTags.isEmpty)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _canEdit
+                        ? 'Chưa có tag nào. Tạo tag để gán cho tài liệu.'
+                        : 'Tài liệu chưa được gán tag.',
+                  ),
+                  if (_canEdit) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _manageTags,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Tạo tag'),
+                    ),
+                  ],
+                ],
+              )
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: visibleTags.map((tag) {
+                  return FilterChip(
+                    label: Text(tag.name),
+                    selected: _selectedTagIds.contains(tag.id),
+                    onSelected: !_canEdit || _isSavingTags
+                        ? null
+                        : (selected) {
+                            setState(() {
+                              if (selected) {
+                                _selectedTagIds.add(tag.id);
+                              } else {
+                                _selectedTagIds.remove(tag.id);
+                              }
+                            });
+                          },
+                  );
+                }).toList(),
+              ),
+
+            if (!_isLoadingTags && _documentTags.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Tag đã lưu: ${_documentTags.map((tag) => tag.name).join(', ')}',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ],
+
+            if (_canEdit) ...[
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  onPressed: _isLoadingTags || _isSavingTags ? null : _saveTags,
+                  icon: _isSavingTags
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_outlined),
+                  label: Text(_isSavingTags ? 'Đang lưu...' : 'Lưu Tag'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
@@ -343,6 +603,24 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
                       ? 'Chưa phân loại'
                       : document.categoryName,
                 ),
+                if (_permission == PermissionRole.viewer) ...[
+                  const SizedBox(width: 8),
+                  const _Badge(
+                    label: 'Chỉ xem',
+                    color: AppColors.textSecondary,
+                    background: Color(0xFFF1F5F9),
+                  ),
+                ] else if (_permission == PermissionRole.editor) ...[
+                  const SizedBox(width: 8),
+                  const _Badge(label: 'Có thể chỉnh sửa'),
+                ] else if (_permission == PermissionRole.owner) ...[
+                  const SizedBox(width: 8),
+                  const _Badge(
+                    label: 'Chủ sở hữu',
+                    color: AppColors.success,
+                    background: Color(0xFFE7F6EC),
+                  ),
+                ],
                 const Spacer(),
                 if (document.hasAttachment)
                   const _Badge(
@@ -376,16 +654,18 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
               spacing: 10,
               runSpacing: 10,
               children: [
-                FilledButton.icon(
-                  onPressed: _edit,
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  label: const Text('Chỉnh sửa'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _share,
-                  icon: const Icon(Icons.share_outlined, size: 18),
-                  label: const Text('Chia sẻ'),
-                ),
+                if (_canEdit)
+                  FilledButton.icon(
+                    onPressed: _edit,
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Chỉnh sửa'),
+                  ),
+                if (_isOwner)
+                  OutlinedButton.icon(
+                    onPressed: _share,
+                    icon: const Icon(Icons.share_outlined, size: 18),
+                    label: const Text('Chia sẻ'),
+                  ),
                 if (document.hasAttachment)
                   OutlinedButton.icon(
                     onPressed: _openFile,
@@ -482,13 +762,14 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
                   ),
                 ),
                 const Spacer(),
-                TextButton.icon(
-                  onPressed: _editLocation,
-                  icon: const Icon(Icons.edit_location_outlined, size: 16),
-                  label: Text(
-                    loc == null || loc.isEmpty ? 'Thêm vị trí' : 'Sửa vị trí',
+                if (_canEdit)
+                  TextButton.icon(
+                    onPressed: _editLocation,
+                    icon: const Icon(Icons.edit_location_outlined, size: 16),
+                    label: Text(
+                      loc == null || loc.isEmpty ? 'Thêm vị trí' : 'Sửa vị trí',
+                    ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 8),
