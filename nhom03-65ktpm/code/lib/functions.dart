@@ -15,7 +15,15 @@ import 'struct/user_model.dart';
 import 'struct/permission_model.dart';
 import 'struct/notification_model.dart';
 import 'struct/recommendation_model.dart';
+import 'struct/document_location_model.dart';
 import 'utils/recommendation_scorer.dart';
+
+export 'struct/category_model.dart';
+export 'struct/document_model.dart';
+export 'struct/user_model.dart';
+export 'struct/permission_model.dart';
+export 'struct/notification_model.dart';
+export 'struct/document_location_model.dart';
 
 final supabaseService = SupabaseService();
 final storageService = SupabaseStorageService();
@@ -312,7 +320,8 @@ Future<DocumentModel> updateDocument({
     throw Exception('Bạn cần đăng nhập để chỉnh sửa tài liệu');
   }
   final permission = await supabaseService.getUserPermission(id, currentUserId);
-  if (permission != PermissionRole.owner && permission != PermissionRole.editor) {
+  if (permission != PermissionRole.owner &&
+      permission != PermissionRole.editor) {
     throw Exception('Bạn không có quyền chỉnh sửa tài liệu này');
   }
 
@@ -605,4 +614,35 @@ Future<void> recordTagging(List<int> tagIds) async {
   } catch (error) {
     debugPrint('⚠️ Không cập nhật được sở thích: $error');
   }
+}
+
+// ==================== DOCUMENT LOCATIONS ====================
+
+/// Lấy vị trí vật lý của tài liệu.
+Future<DocumentLocationModel?> getDocumentLocation(int documentId) async {
+  return supabaseService.getDocumentLocation(documentId);
+}
+
+/// Lưu (upsert) vị trí vật lý của tài liệu.
+Future<DocumentLocationModel?> upsertDocumentLocation({
+  required int documentId,
+  double? latitude,
+  double? longitude,
+  String? placeName,
+  String? shelf,
+  String? note,
+}) async {
+  return supabaseService.upsertDocumentLocation(
+    documentId: documentId,
+    latitude: latitude,
+    longitude: longitude,
+    placeName: placeName,
+    shelf: shelf,
+    note: note,
+  );
+}
+
+/// Xóa vị trí vật lý của tài liệu.
+Future<void> deleteDocumentLocation(int documentId) async {
+  await supabaseService.deleteDocumentLocation(documentId);
 }
