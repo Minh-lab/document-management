@@ -48,13 +48,13 @@ class SupabaseStorageService {
 
       // Upload bytes to Supabase Storage
       // bucket: 'documents' (cần tạo bucket này trong Supabase Dashboard)
-      final uploadResult = await _client.storage
+      await _client.storage
           .from('documents')
           .uploadBinary(
             storagePath,
             bytes,
             fileOptions: FileOptions(
-              contentType: 'application/pdf',
+              contentType: _contentTypeFor(fileName),
               upsert: false,
             ),
           );
@@ -118,6 +118,47 @@ class SupabaseStorageService {
     }
   }
 
+  // Lấy public URL cho một storage path.
+  String getPublicUrl(String storagePath) {
+    return _client.storage.from('documents').getPublicUrl(storagePath);
+  }
+
+  /// Suy ra MIME type từ phần mở rộng để trình duyệt/ứng dụng mở đúng cách.
+  String _contentTypeFor(String fileName) {
+    final ext = fileName.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'pdf':
+        return 'application/pdf';
+      case 'doc':
+        return 'application/msword';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'xls':
+        return 'application/vnd.ms-excel';
+      case 'xlsx':
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      case 'ppt':
+        return 'application/vnd.ms-powerpoint';
+      case 'pptx':
+        return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+      case 'txt':
+        return 'text/plain';
+      case 'png':
+        return 'image/png';
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      case 'zip':
+        return 'application/zip';
+      default:
+        return 'application/octet-stream';
+    }
+  }
+
   String _getStorageErrorMessage(String message) {
     if (message.contains('not found') || message.contains('404')) {
       return 'File không tồn tại trên storage';
@@ -154,7 +195,7 @@ class SupabaseStorageService {
             storagePath,
             bytes,
             fileOptions: FileOptions(
-              contentType: 'application/pdf',
+              contentType: _contentTypeFor(storagePath),
               upsert: true,
             ),
           );

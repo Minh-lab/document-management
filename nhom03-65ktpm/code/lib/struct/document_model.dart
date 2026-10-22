@@ -30,5 +30,7 @@ class DocumentModel {
 
   // Kiểm tra có file đính kèm không
   bool get hasAttachment =>
-      fileUrl != null || (filePath != null && filePath!.isNotEmpty);
+      (fileUrl != null && fileUrl!.isNotEmpty) ||
+      (filePath != null && filePath!.isNotEmpty) ||
+      (storagePath != null && storagePath!.isNotEmpty);
 }

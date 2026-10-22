@@ -4,12 +4,17 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../colors.dart';
 import '../functions.dart';
+import '../services/tag_service.dart';
+import '../struct/document_model.dart';
+import '../struct/tag_model.dart';
 import '../utils/responsive.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/share_dialog.dart';
 import '../widgets/state_views.dart';
 import 'document_form_page.dart';
+import 'file_viewer_page.dart';
 import 'location_picker_page.dart';
+import 'tag_management_page.dart';
 
 class DocumentDetailPage extends StatefulWidget {
   const DocumentDetailPage({super.key, required this.documentId});
@@ -33,6 +38,16 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
       _permission == PermissionRole.editor;
 
   bool get _isOwner => _permission == PermissionRole.owner;
+
+  // Quản lý Tag
+  final TagService _tagService = TagService();
+
+  List<TagModel> _allTags = [];
+  List<TagModel> _documentTags = [];
+  Set<int> _selectedTagIds = {};
+
+  bool _isLoadingTags = false;
+  bool _isSavingTags = false;
 
   @override
   void initState() {
@@ -62,7 +77,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
         ),
       ),
     );
-    // result == null means deleted, otherwise updated
+    // result == null nghĩa là đã xóa, ngược lại là đã cập nhật
     if (mounted) {
       setState(() => _location = result);
       if (!mounted) return;
@@ -100,7 +115,9 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
 
     try {
       final document = await getDocumentById(widget.documentId);
+
       if (!mounted) return;
+
       setState(() {
         _document = document;
         _permission = permission;
@@ -109,8 +126,11 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
       // Chỉ ghi nhận lượt xem sau khi đã xác thực quyền truy cập.
       recordDocumentView(widget.documentId); // UC-11: lượt xem + sở thích
       _loadLocation();
+      // Tải danh sách tag và tag đã gán cho tài liệu.
+      await _loadTags();
     } catch (error) {
       if (!mounted) return;
+
       setState(() {
         _error = error.toString().replaceFirst('Exception: ', '');
         _isLoading = false;
@@ -118,6 +138,103 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     }
   }
 
+  // Tai danh sach Tag va Tag da gan cho tai lieu
+  Future<void> _loadTags() async {
+    if (!mounted) return;
+
+    setState(() {
+      _isLoadingTags = true;
+    });
+
+    try {
+      final results = await Future.wait([
+        _tagService.getTags(),
+        _tagService.getTagsForDocument(widget.documentId),
+      ]);
+
+      final allTags = results[0];
+      final documentTags = results[1];
+
+      if (!mounted) return;
+
+      setState(() {
+        _allTags = allTags;
+        _documentTags = documentTags;
+        _selectedTagIds = documentTags.map((tag) => tag.id).toSet();
+        _isLoadingTags = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoadingTags = false;
+      });
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Không tải được Tag: $error')));
+    }
+  }
+
+  // Lưu các Tag được chọn
+  Future<void> _saveTags() async {
+    if (!_canEdit) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Bạn không có quyền chỉnh sửa tag của tài liệu này'),
+        ),
+      );
+      return;
+    }
+    if (_isSavingTags || _isLoadingTags) return;
+
+    setState(() {
+      _isSavingTags = true;
+    });
+
+    try {
+      await _tagService.setDocumentTags(
+        documentId: widget.documentId,
+        tagIds: _selectedTagIds.toList(),
+      );
+
+      // Cập nhật sở thích theo tag để phục vụ Recommendation (UC-11).
+      try {
+        await recordTagging(_selectedTagIds.toList());
+      } catch (error) {
+        debugPrint('⚠️ Không cập nhật được sở thích tag: $error');
+      }
+
+      await _loadTags();
+
+      if (!mounted) return;
+
+      _changed = true;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Đã lưu Tag cho tài liệu!')));
+    } catch (error) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Lưu Tag thất bại: $error')));
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSavingTags = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _manageTags() async {
+    await Navigator.of(
+      context,
+    ).push<void>(MaterialPageRoute(builder: (_) => const TagManagementPage()));
+    if (mounted) await _loadTags();
+  }
+
+  // Chinh sua tai lieu
   Future<void> _edit() async {
     if (currentUserId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -140,12 +257,14 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => DocumentFormPage(document: document)),
     );
+
     if (changed == true) {
       _changed = true;
-      _load();
+      await _load();
     }
   }
 
+  // Xoa tai lieu
   Future<void> _delete() async {
     if (currentUserId.isEmpty) {
       ScaffoldMessenger.of(
@@ -172,22 +291,28 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
         content: 'Bạn có chắc chắn muốn xóa tài liệu này không?',
       ),
     );
+
     if (confirmed != true) return;
 
     try {
       await deleteDocument(document.id, storagePath: document.storagePath);
+
       if (!mounted) return;
+
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Đã xóa tài liệu')));
+
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Không thể xóa tài liệu: $error')));
     }
   }
 
+  // Chia se tai lieu
   void _share() {
     if (!_isOwner) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -199,6 +324,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     }
     final document = _document;
     if (document == null) return;
+
     showDialog<void>(
       context: context,
       builder: (_) => ShareDialog(
@@ -209,6 +335,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     );
   }
 
+  // Mo tep dinh kem
   Future<void> _openFile() async {
     if (currentUserId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -224,54 +351,16 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     }
 
     final document = _document;
-    if (document == null) {
+    if (document == null || !document.hasAttachment) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Tài liệu này không có tệp đính kèm')),
       );
       return;
     }
 
-    // Ưu tiên signed URL khi có storagePath (hoạt động cả với bucket private).
-    String? url;
-    final storagePath = document.storagePath;
-    if (storagePath != null && storagePath.isNotEmpty) {
-      url = await storageService.getSignedUrl(storagePath);
-    }
-    url ??= document.openUrl;
-
-    if (url == null || url.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Tài liệu này không có tệp đính kèm')),
-      );
-      return;
-    }
-
-    final uri = Uri.parse(url);
-    try {
-      // Không phụ thuộc canLaunchUrl vì Android 11+ có thể trả false
-      // dù vẫn mở được bằng trình duyệt/ứng dụng bên ngoài.
-      final launched = await launchUrl(
-        uri,
-        mode: LaunchMode.externalApplication,
-      );
-      if (launched) return;
-    } catch (error) {
-      debugPrint('⚠️ Không mở được tệp: $error');
-    }
-
-    // Thử fallback với canLaunchUrl + platformDefault (một số thiết bị).
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
-        return;
-      }
-    } catch (error) {
-      debugPrint('⚠️ Fallback mở tệp thất bại: $error');
-    }
-
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Không thể mở tệp này')));
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => FileViewerPage(document: document)),
+    );
   }
 
   void _goBack() {
@@ -351,12 +440,13 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     }
 
     final document = _document;
+
     if (document == null) {
       return AppEmptyView(
         icon: Icons.folder_off_outlined,
         title: 'Tài liệu không tồn tại',
         message: 'Tài liệu có thể đã bị xóa hoặc bạn không có quyền xem.',
-        actionLabel: 'Quay lại',
+        actionLabel: 'Quay lai',
         onAction: _goBack,
       );
     }
@@ -376,10 +466,123 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
               _buildLocationCard(context),
               const SizedBox(height: 16),
               _buildInfoCard(context, document),
+              const SizedBox(height: 16),
+              _buildTagsCard(context),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  // Hiển thị khu vực chọn Tag
+  Widget _buildTagsCard(BuildContext context) {
+    final visibleTags = _canEdit ? _allTags : _documentTags;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.sell_outlined),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Phân loại bằng Tag',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  ),
+                ),
+                if (_canEdit)
+                  TextButton(
+                    onPressed: _manageTags,
+                    child: const Text('Quản lý'),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _canEdit
+                  ? 'Chọn một hoặc nhiều thẻ phù hợp với tài liệu.'
+                  : 'Các thẻ đã gán cho tài liệu.',
+              style: const TextStyle(color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 12),
+
+            if (_isLoadingTags)
+              const Center(child: CircularProgressIndicator())
+            else if (visibleTags.isEmpty)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _canEdit
+                        ? 'Chưa có tag nào. Tạo tag để gán cho tài liệu.'
+                        : 'Tài liệu chưa được gán tag.',
+                  ),
+                  if (_canEdit) ...[
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _manageTags,
+                      icon: const Icon(Icons.add),
+                      label: const Text('Tạo tag'),
+                    ),
+                  ],
+                ],
+              )
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: visibleTags.map((tag) {
+                  return FilterChip(
+                    label: Text(tag.name),
+                    selected: _selectedTagIds.contains(tag.id),
+                    onSelected: !_canEdit || _isSavingTags
+                        ? null
+                        : (selected) {
+                            setState(() {
+                              if (selected) {
+                                _selectedTagIds.add(tag.id);
+                              } else {
+                                _selectedTagIds.remove(tag.id);
+                              }
+                            });
+                          },
+                  );
+                }).toList(),
+              ),
+
+            if (!_isLoadingTags && _documentTags.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Tag đã lưu: ${_documentTags.map((tag) => tag.name).join(', ')}',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ],
+
+            if (_canEdit) ...[
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerRight,
+                child: FilledButton.icon(
+                  onPressed: _isLoadingTags || _isSavingTags ? null : _saveTags,
+                  icon: _isSavingTags
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.save_outlined),
+                  label: Text(_isSavingTags ? 'Đang lưu...' : 'Lưu Tag'),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
