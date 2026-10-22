@@ -67,7 +67,6 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
         latitude: location.latitude,
         longitude: location.longitude,
         placeName: location.placeName,
-        shelf: location.shelf,
         note: location.note,
       );
       if (!mounted) return;
@@ -564,14 +563,6 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
                   label: 'Địa điểm',
                   value: loc.placeName!,
                 ),
-              if (loc.shelf != null && loc.shelf!.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                _InfoRow(
-                  icon: Icons.shelves,
-                  label: 'Kệ / Ngăn',
-                  value: loc.shelf!,
-                ),
-              ],
               if (loc.note != null && loc.note!.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 _InfoRow(

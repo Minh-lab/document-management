@@ -155,7 +155,6 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
       latitude: location.latitude,
       longitude: location.longitude,
       placeName: location.placeName,
-      shelf: location.shelf,
       note: location.note,
     );
   }

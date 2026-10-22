@@ -83,7 +83,6 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
   static const LatLng _fallbackCenter = LatLng(10.7769, 106.6919); // TP.HCM
 
   final _placeNameCtrl = TextEditingController();
-  final _shelfCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
   final _latCtrl = TextEditingController();
   final _lngCtrl = TextEditingController();
@@ -104,7 +103,6 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
     final loc = widget.existingLocation;
     if (loc != null) {
       _placeNameCtrl.text = loc.placeName ?? '';
-      _shelfCtrl.text = loc.shelf ?? '';
       _noteCtrl.text = loc.note ?? '';
       if (loc.latitude != null) _latCtrl.text = loc.latitude!.toString();
       if (loc.longitude != null) _lngCtrl.text = loc.longitude!.toString();
@@ -117,7 +115,6 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
   @override
   void dispose() {
     _placeNameCtrl.dispose();
-    _shelfCtrl.dispose();
     _noteCtrl.dispose();
     _latCtrl.dispose();
     _lngCtrl.dispose();
@@ -341,7 +338,6 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
 
     final hasAnyData =
         _placeNameCtrl.text.trim().isNotEmpty ||
-        _shelfCtrl.text.trim().isNotEmpty ||
         _noteCtrl.text.trim().isNotEmpty ||
         _latCtrl.text.trim().isNotEmpty;
 
@@ -360,7 +356,6 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
       placeName: _placeNameCtrl.text.trim().isEmpty
           ? null
           : _placeNameCtrl.text.trim(),
-      shelf: _shelfCtrl.text.trim().isEmpty ? null : _shelfCtrl.text.trim(),
       note: _noteCtrl.text.trim().isEmpty ? null : _noteCtrl.text.trim(),
       updatedAt: DateTime.now(),
     );
@@ -562,16 +557,6 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
                       labelText: 'Địa chỉ / tên địa điểm',
                       hintText: 'Ví dụ: Thư viện tầng 3, Phòng A201',
                       prefixIcon: Icon(Icons.place_outlined),
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _shelfCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Kệ / ngăn / vị trí cụ thể',
-                      hintText: 'Ví dụ: Kệ B, ngăn 3, ô 15',
-                      prefixIcon: Icon(Icons.shelves),
                       border: OutlineInputBorder(),
                     ),
                   ),

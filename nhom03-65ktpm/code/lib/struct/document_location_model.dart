@@ -31,7 +31,6 @@ class DocumentLocationModel {
 
   bool get hasPhysicalDetails =>
       (placeName != null && placeName!.isNotEmpty) ||
-      (shelf != null && shelf!.isNotEmpty) ||
       (note != null && note!.isNotEmpty);
 
   bool get isEmpty => !hasCoordinates && !hasPhysicalDetails;
@@ -41,9 +40,7 @@ class DocumentLocationModel {
     if (placeName != null && placeName!.trim().isNotEmpty) {
       parts.add(placeName!.trim());
     }
-    if (shelf != null && shelf!.trim().isNotEmpty) {
-      parts.add('Kệ/Ngăn: ${shelf!.trim()}');
-    }
+
     if (note != null && note!.trim().isNotEmpty) {
       parts.add('(${note!.trim()})');
     }
