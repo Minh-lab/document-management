@@ -10,6 +10,7 @@ code/build/
 code/.dart_tool/
 code/.flutter-plugins-dependencies
 code/.playwright-mcp/
+.playwright-mcp/
 code/coverage/
 *.log
 

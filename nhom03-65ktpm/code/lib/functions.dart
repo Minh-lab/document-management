@@ -138,6 +138,73 @@ Future<void> signInAsGuest() async {
   }
 }
 
+/// Nâng cấp tài khoản ẩn danh (anonymous) lên tài khoản Email/Mật khẩu
+/// Gọi khi người dùng đang dùng thử muốn tạo tài khoản chính thức
+Future<firebase_auth.UserCredential> upgradeAnonymousToEmail({
+  required String email,
+  required String password,
+  String? displayName,
+}) async {
+  final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+  if (currentUser == null) {
+    throw Exception('Không có người dùng đang đăng nhập');
+  }
+  if (!currentUser.isAnonymous) {
+    throw Exception('Người dùng không phải tài khoản ẩn danh');
+  }
+
+  // Tạo credential Email/Password
+  final credential = firebase_auth.EmailAuthProvider.credential(
+    email: email.trim(),
+    password: password,
+  );
+
+  // Link credential với tài khoản anonymous hiện tại
+  final userCredential = await currentUser.linkWithCredential(credential);
+
+  // Cập nhật tên hiển thị nếu có
+  if (displayName != null && displayName.trim().isNotEmpty) {
+    await userCredential.user?.updateDisplayName(displayName.trim());
+    await userCredential.user?.reload();
+  }
+
+  // Đồng bộ lại với Supabase
+  if (userCredential.user != null) {
+    await _syncFirebaseUserToSupabase(userCredential.user!);
+  }
+
+  return userCredential;
+}
+
+/// Nâng cấp tài khoản ẩn danh lên tài khoản Google
+Future<firebase_auth.UserCredential?> upgradeAnonymousToGoogle() async {
+  final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+  if (currentUser == null) {
+    throw Exception('Không có người dùng đang đăng nhập');
+  }
+  if (!currentUser.isAnonymous) {
+    throw Exception('Người dùng không phải tài khoản ẩn danh');
+  }
+
+  final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+  if (googleUser == null) return null; // Người dùng hủy
+
+  final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+
+  final credential = firebase_auth.GoogleAuthProvider.credential(
+    accessToken: googleAuth.accessToken,
+    idToken: googleAuth.idToken,
+  );
+
+  final userCredential = await currentUser.linkWithCredential(credential);
+
+  if (userCredential.user != null) {
+    await _syncFirebaseUserToSupabase(userCredential.user!);
+  }
+
+  return userCredential;
+}
+
 /// Đăng nhập bằng Google
 Future<firebase_auth.UserCredential?> signInWithGoogle() async {
   final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
@@ -529,6 +596,12 @@ Future<List<PermissionModel>> getDocumentShares(int documentId) async {
 /// Lấy tài liệu được chia sẻ cho user hiện tại
 Future<List<DocumentModel>> getSharedWithMe() async {
   return await supabaseService.getSharedDocuments(currentUserId);
+}
+
+/// Kiểm tra quyền của user trên tài liệu
+Future<PermissionRole?> getUserPermission(int documentId) async {
+  if (currentUserId.isEmpty) return null;
+  return await supabaseService.getUserPermission(documentId, currentUserId);
 }
 
 // ==================== NOTIFICATIONS ====================

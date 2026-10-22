@@ -34,6 +34,8 @@ Các file SQL nằm trong `code/`:
 - `supabase_schema.sql` – tạo bảng
 - `supabase_rls_policies.sql` – chính sách RLS
 - `supabase_storage_policies.sql` – chính sách storage
+- `supabase_notifications.sql` – bảng thông báo + realtime
+- `supabase_seed_sample_data.sql` – dữ liệu mẫu (danh mục, tài liệu, chia sẻ, thông báo) cho user đầu tiên; chạy trong SQL Editor, có thể chạy lại mà không nhân đôi dữ liệu
 
 ## Quy trình làm việc nhóm
 

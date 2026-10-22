@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 import '../colors.dart';
 import '../functions.dart';
-import '../services/supabase_service.dart';
 import '../struct/category_model.dart';
 import '../struct/document_model.dart';
 import '../struct/permission_model.dart';
@@ -59,10 +58,7 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
       Navigator.of(context).pop();
       return;
     }
-    final permission = await supabaseService.getUserPermission(
-      documentId,
-      currentUserId,
-    );
+    final permission = await getUserPermission(documentId);
     if (permission != PermissionRole.owner &&
         permission != PermissionRole.editor) {
       if (!mounted) return;

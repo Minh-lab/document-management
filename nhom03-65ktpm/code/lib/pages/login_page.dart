@@ -1,3 +1,4 @@
+import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/material.dart';
 
 import '../colors.dart';
@@ -103,6 +104,55 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  /// Nâng cấp tài khoản ẩn danh lên tài khoản Email/Mật khẩu
+  Future<void> _upgradeAnonymousAccount() async {
+    FocusScope.of(context).unfocus();
+    if (!_formKey.currentState!.validate()) return;
+
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      await upgradeAnonymousToEmail(
+        email: _emailController.text,
+        password: _passwordController.text,
+        displayName: _nameController.text.isNotEmpty ? _nameController.text : null,
+      );
+      // AuthGate sẽ tự chuyển màn hình khi trạng thái đăng nhập thay đổi.
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = friendlyAuthError(error);
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  /// Nâng cấp tài khoản ẩn danh lên Google
+  Future<void> _upgradeAnonymousToGoogle() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      final credential = await upgradeAnonymousToGoogle();
+      if (credential == null && mounted) {
+        setState(() => _isLoading = false);
+      }
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _error = friendlyAuthError(error);
+        _isLoading = false;
+      });
+    }
+  }
+
   void _switchMode(bool register) {
     setState(() {
       _isRegister = register;
@@ -193,6 +243,185 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Widget _buildCard() {
+    return StreamBuilder<firebase_auth.User?>(
+      stream: authStateChanges,
+      builder: (context, snapshot) {
+        final user = snapshot.data ?? currentFirebaseUser;
+        final isAnonymous = user?.isAnonymous ?? false;
+
+        // Nếu là anonymous user, hiển thị giao diện nâng cấp tài khoản
+        if (isAnonymous) {
+          return _buildUpgradeCard();
+        }
+
+        return _buildAuthCard();
+      },
+    );
+  }
+
+  /// Giao diện cho tài khoản ẩn danh - nâng cấp tài khoản
+  Widget _buildUpgradeCard() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Icon(
+                Icons.upgrade_outlined,
+                size: 48,
+                color: AppColors.primary,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Nâng cấp tài khoản',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Bạn đang dùng thử. Tạo tài khoản để lưu dữ liệu vĩnh viễn.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppColors.textSecondary),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 16),
+                _ErrorBanner(message: _error!),
+              ],
+              const SizedBox(height: 20),
+              TextFormField(
+                controller: _nameController,
+                textInputAction: TextInputAction.next,
+                enabled: !_isLoading,
+                decoration: const InputDecoration(
+                  labelText: 'Họ tên (tùy chọn)',
+                  prefixIcon: Icon(Icons.person_outline),
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _emailController,
+                enabled: !_isLoading,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                autofillHints: const [AutofillHints.email],
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  hintText: 'you@example.com',
+                  prefixIcon: Icon(Icons.mail_outline),
+                ),
+                validator: (value) {
+                  final email = value?.trim() ?? '';
+                  if (email.isEmpty) return 'Vui lòng nhập email';
+                  final isValid = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                      .hasMatch(email);
+                  if (!isValid) return 'Email không hợp lệ';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _passwordController,
+                enabled: !_isLoading,
+                obscureText: _obscurePassword,
+                textInputAction: TextInputAction.next,
+                autofillHints: const [AutofillHints.newPassword],
+                decoration: InputDecoration(
+                  labelText: 'Mật khẩu',
+                  prefixIcon: const Icon(Icons.lock_outline),
+                  suffixIcon: IconButton(
+                    tooltip: _obscurePassword ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                    ),
+                    onPressed: () =>
+                        setState(() => _obscurePassword = !_obscurePassword),
+                  ),
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Vui lòng nhập mật khẩu';
+                  }
+                  if (value.length < 6) {
+                    return 'Mật khẩu phải có ít nhất 6 ký tự';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _confirmPasswordController,
+                enabled: !_isLoading,
+                obscureText: _obscurePassword,
+                textInputAction: TextInputAction.done,
+                onFieldSubmitted: (_) => _upgradeAnonymousAccount(),
+                decoration: const InputDecoration(
+                  labelText: 'Nhập lại mật khẩu',
+                  prefixIcon: Icon(Icons.lock_reset_outlined),
+                ),
+                validator: (value) {
+                  if (value != _passwordController.text) {
+                    return 'Mật khẩu nhập lại không khớp';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 22),
+              FilledButton(
+                onPressed: _isLoading ? null : _upgradeAnonymousAccount,
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.4,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text('Nâng cấp tài khoản'),
+              ),
+              const SizedBox(height: 18),
+              const _OrDivider(),
+              const SizedBox(height: 18),
+              OutlinedButton(
+                onPressed: _isLoading ? null : _upgradeAnonymousToGoogle,
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    _GoogleMark(),
+                    SizedBox(width: 10),
+                    Flexible(
+                      child: Text(
+                        'Nâng cấp bằng Google',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                onPressed: _isLoading ? null : _continueAsGuest,
+                child: const Text('Tiếp tục dùng thử'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Giao diện đăng nhập/đăng ký gốc
+  Widget _buildAuthCard() {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(28),

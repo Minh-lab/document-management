@@ -123,18 +123,17 @@ class _DocumentListPageState extends State<DocumentListPage> {
 
   Future<void> _deleteDocument(DocumentModel document) async {
     if (currentUserId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bạn cần đăng nhập để xóa')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Bạn cần đăng nhập để xóa')));
       return;
     }
-    final permission = await supabaseService.getUserPermission(
-      document.id,
-      currentUserId,
-    );
+    final permission = await getUserPermission(document.id);
     if (permission != PermissionRole.owner) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Chỉ chủ sở hữu tài liệu mới có quyền xóa')),
+        const SnackBar(
+          content: Text('Chỉ chủ sở hữu tài liệu mới có quyền xóa'),
+        ),
       );
       return;
     }
@@ -242,11 +241,19 @@ class _DocumentListPageState extends State<DocumentListPage> {
       return const AppLoadingView(message: 'Đang tải tài liệu...');
     }
 
+    return RefreshIndicator(
+      onRefresh: () => _load(showLoading: false),
+      child: _buildContent(context),
+    );
+  }
+
+  Widget _buildContent(BuildContext context) {
     if (_error != null) {
       return AppErrorView(
         title: 'Không tải được danh sách',
         message: _error!,
         onRetry: _load,
+        physics: const AlwaysScrollableScrollPhysics(),
       );
     }
 
@@ -261,22 +268,20 @@ class _DocumentListPageState extends State<DocumentListPage> {
             : 'Nhấn "Thêm" để tạo tài liệu đầu tiên của bạn.',
         actionLabel: _hasFilter ? 'Xóa bộ lọc' : 'Thêm tài liệu',
         onAction: _hasFilter ? _clearFilters : () => _openForm(),
+        physics: const AlwaysScrollableScrollPhysics(),
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ContentWidth(
-        maxWidth: 1200,
-        child: DocumentGrid(
-          documents: _documents,
-          padding: context.pagePadding.add(const EdgeInsets.only(bottom: 88)),
-          physics: const AlwaysScrollableScrollPhysics(),
-          onTap: _openDetail,
-          onEdit: (document) => _openForm(document),
-          onDelete: _deleteDocument,
-          onShare: _openShareDialog,
-        ),
+    return ContentWidth(
+      maxWidth: 1200,
+      child: DocumentGrid(
+        documents: _documents,
+        padding: context.pagePadding.add(const EdgeInsets.only(bottom: 88)),
+        physics: const AlwaysScrollableScrollPhysics(),
+        onTap: _openDetail,
+        onEdit: (document) => _openForm(document),
+        onDelete: _deleteDocument,
+        onShare: _openShareDialog,
       ),
     );
   }
