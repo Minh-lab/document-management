@@ -6,6 +6,7 @@ import '../colors.dart';
 import '../functions.dart';
 import '../services/supabase_service.dart';
 import '../struct/document_model.dart';
+import '../struct/permission_model.dart';
 import '../utils/responsive.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/share_dialog.dart';
@@ -31,6 +32,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
   void initState() {
     super.initState();
     _load();
+    recordDocumentView(widget.documentId); // UC-11: lượt xem + sở thích
   }
 
   /// Kiểm tra xem user có quyền xem tài liệu không

@@ -5,6 +5,7 @@ import '../struct/document_model.dart';
 import '../struct/user_model.dart';
 import '../struct/permission_model.dart';
 import '../struct/notification_model.dart';
+import '../struct/recommendation_model.dart';
 import '../config/supabase_config.dart';
 
 class SupabaseService {
@@ -354,6 +355,60 @@ class SupabaseService {
           callback: (_) => onChanged(),
         )
         .subscribe();
+  }
+
+  // ==================== RECOMMENDATION (UC-11) ====================
+
+  /// Tài liệu ứng viên: của người khác, chưa xem trong 7 ngày (hàm SQL recommendation_candidates).
+  Future<List<RecommendationCandidate>> getRecommendationCandidates(
+    String userId,
+  ) async {
+    final response = await _client.rpc(
+      'recommendation_candidates',
+      params: {'p_user_id': userId},
+    );
+    return (response as List)
+        .map(
+          (json) =>
+              RecommendationCandidate.fromJson(json as Map<String, dynamic>),
+        )
+        .toList();
+  }
+
+  /// Sở thích của người dùng: tên tag -> trọng số.
+  Future<Map<String, double>> getUserInterests(String userId) async {
+    final response = await _client.rpc(
+      'user_interest_weights',
+      params: {'p_user_id': userId},
+    );
+    return {
+      for (final row in response as List)
+        row['tag_name'] as String: (row['weight'] as num).toDouble(),
+    };
+  }
+
+  /// Ghi một lượt xem và tăng trọng số các tag của tài liệu (+1).
+  Future<void> recordDocumentView({
+    required String userId,
+    required int documentId,
+  }) async {
+    await _client.rpc(
+      'record_document_view',
+      params: {'p_user_id': userId, 'p_document_id': documentId},
+    );
+  }
+
+  /// Tăng trọng số sở thích khi người dùng gán tag cho tài liệu.
+  Future<void> bumpTagInterests({
+    required String userId,
+    required List<int> tagIds,
+    double amount = 2,
+  }) async {
+    if (tagIds.isEmpty) return;
+    await _client.rpc(
+      'bump_tag_interests',
+      params: {'p_user_id': userId, 'p_tag_ids': tagIds, 'p_amount': amount},
+    );
   }
 
   // ==================== USERS ====================
