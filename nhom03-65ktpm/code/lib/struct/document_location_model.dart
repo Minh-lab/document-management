@@ -23,9 +23,14 @@ class DocumentLocationModel {
 
   bool get hasCoordinates => latitude != null && longitude != null;
 
+  /// Địa chỉ hiển thị của vị trí.
+  ///
+  /// Được lưu trong cột `place_name` của bảng `document_locations`
+  /// (giữ tương thích với schema hiện có).
+  String? get address => placeName;
+
   bool get hasPhysicalDetails =>
       (placeName != null && placeName!.isNotEmpty) ||
-      (shelf != null && shelf!.isNotEmpty) ||
       (note != null && note!.isNotEmpty);
 
   bool get isEmpty => !hasCoordinates && !hasPhysicalDetails;
@@ -35,9 +40,7 @@ class DocumentLocationModel {
     if (placeName != null && placeName!.trim().isNotEmpty) {
       parts.add(placeName!.trim());
     }
-    if (shelf != null && shelf!.trim().isNotEmpty) {
-      parts.add('Kệ/Ngăn: ${shelf!.trim()}');
-    }
+
     if (note != null && note!.trim().isNotEmpty) {
       parts.add('(${note!.trim()})');
     }
@@ -51,8 +54,12 @@ class DocumentLocationModel {
     return DocumentLocationModel(
       id: json['id'] != null ? (json['id'] as num).toInt() : null,
       documentId: (json['document_id'] as num).toInt(),
-      latitude: json['latitude'] != null ? (json['latitude'] as num).toDouble() : null,
-      longitude: json['longitude'] != null ? (json['longitude'] as num).toDouble() : null,
+      latitude: json['latitude'] != null
+          ? (json['latitude'] as num).toDouble()
+          : null,
+      longitude: json['longitude'] != null
+          ? (json['longitude'] as num).toDouble()
+          : null,
       placeName: json['place_name'] as String?,
       shelf: json['shelf'] as String?,
       note: json['note'] as String?,

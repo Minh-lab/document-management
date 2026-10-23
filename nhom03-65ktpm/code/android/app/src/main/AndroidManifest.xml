@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Bản đồ OpenStreetMap + geocoding cần Internet -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Lấy vị trí hiện tại để gợi ý vị trí tài liệu -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <application
         android:label="code"
         android:name="${applicationName}"
@@ -41,7 +47,8 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
-        <!-- Cho phép mở tệp/URL bằng trình duyệt hoặc ứng dụng bên ngoài (Android 11+ package visibility) -->
+        <!-- Mở ứng dụng bản đồ để chỉ đường, đồng thời cho phép mở tệp/URL
+             bằng trình duyệt hoặc ứng dụng bên ngoài (Android 11+ package visibility) -->
         <intent>
             <action android:name="android.intent.action.VIEW"/>
             <data android:scheme="https"/>

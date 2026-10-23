@@ -9,7 +9,9 @@ import '../struct/document_model.dart';
 import '../struct/permission_model.dart';
 import '../struct/tag_model.dart';
 import '../utils/responsive.dart';
+import '../widgets/document_location_map.dart';
 import '../widgets/state_views.dart';
+import 'location_picker_page.dart';
 import 'tag_management_page.dart';
 
 class DocumentFormPage extends StatefulWidget {
@@ -34,6 +36,9 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
   final Set<int> _selectedTagIds = {};
   int? _selectedCategoryId;
   PlatformFile? _selectedFile;
+  DocumentLocationModel? _location;
+  bool _locationChanged = false;
+  bool _isLoadingLocation = false;
   bool _isLoadingCategories = true;
   bool _isSaving = false;
   String? _loadError;
@@ -51,7 +56,18 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
     _loadCategories();
     if (document != null) {
       _checkEditPermission(document.id);
+      _loadLocation(document.id);
     }
+  }
+
+  Future<void> _loadLocation(int documentId) async {
+    setState(() => _isLoadingLocation = true);
+    final location = await getDocumentLocation(documentId);
+    if (!mounted) return;
+    setState(() {
+      _location = location;
+      _isLoadingLocation = false;
+    });
   }
 
   /// Kiểm tra quyền chỉnh sửa khi mở form sửa tài liệu
@@ -152,6 +168,33 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
     }
   }
 
+  Future<void> _pickLocation() async {
+    final result = await showLocationPickerDialog(
+      context,
+      existingLocation: _location,
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _location = result.deleted ? null : result.location;
+      _locationChanged = true;
+    });
+  }
+
+  Future<void> _persistLocation(int documentId) async {
+    final location = _location;
+    if (location == null || location.isEmpty) {
+      await deleteDocumentLocation(documentId);
+      return;
+    }
+    await upsertDocumentLocation(
+      documentId: documentId,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      placeName: location.placeName,
+      note: location.note,
+    );
+  }
+
   Future<void> _save() async {
     FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
@@ -175,6 +218,9 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
           file: _selectedFile,
           categoryId: _selectedCategoryId!,
         );
+        if (_location != null && !_location!.isEmpty) {
+          await _persistLocation(savedDocument.id);
+        }
       } else {
         savedDocument = await updateDocument(
           id: widget.document!.id,
@@ -185,6 +231,9 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
           existingFileUrl: widget.document!.fileUrl,
           existingStoragePath: widget.document!.storagePath,
         );
+        if (_locationChanged) {
+          await _persistLocation(widget.document!.id);
+        }
       }
       await _tagService.setDocumentTags(
         documentId: savedDocument.id,
@@ -234,6 +283,103 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
         _isSaving
             ? 'Đang lưu...'
             : (widget.isEditing ? 'Lưu thay đổi' : 'Lưu tài liệu'),
+      ),
+    );
+  }
+
+  Widget _buildLocationSection() {
+    final location = _location;
+    final hasLocation = location != null && !location.isEmpty;
+
+    return _SectionCard(
+      title: 'Vị trí tài liệu',
+      subtitle: 'Chọn vị trí trên bản đồ để lưu tọa độ, địa chỉ và chỉ đường sau này.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_isLoadingLocation)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Center(
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ),
+            )
+          else if (location != null && location.hasCoordinates) ...[
+            DocumentLocationMap(
+              latitude: location.latitude!,
+              longitude: location.longitude!,
+              height: 160,
+              zoom: 16,
+              interactive: false,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              location.summaryText,
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textPrimary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ] else
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    hasLocation
+                        ? Icons.place_outlined
+                        : Icons.add_location_alt_outlined,
+                    color: AppColors.primary,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      hasLocation ? location.summaryText : 'Chưa chọn vị trí. Bạn có thể chọn trên bản đồ hoặc bỏ trống.',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _isSaving ? null : _pickLocation,
+                icon: const Icon(Icons.map_outlined, size: 18),
+                label: Text(
+                  hasLocation ? 'Thay đổi vị trí' : 'Chọn vị trí trên bản đồ',
+                ),
+              ),
+              if (hasLocation)
+                TextButton.icon(
+                  onPressed: _isSaving
+                      ? null
+                      : () => setState(() {
+                          _location = null;
+                          _locationChanged = true;
+                        }),
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text('Xóa vị trí'),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -425,13 +571,24 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
                   children: [
                     Expanded(flex: 3, child: basicInfo),
                     const SizedBox(width: 20),
-                    Expanded(flex: 2, child: classification),
+                    Expanded(
+                      flex: 2,
+                      child: Column(
+                        children: [
+                          classification,
+                          const SizedBox(height: 16),
+                          _buildLocationSection(),
+                        ],
+                      ),
+                    ),
                   ],
                 )
               else ...[
                 basicInfo,
                 const SizedBox(height: 16),
                 classification,
+                const SizedBox(height: 16),
+                _buildLocationSection(),
               ],
               const SizedBox(height: 16),
               tagsSection,
