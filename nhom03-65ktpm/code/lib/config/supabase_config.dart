@@ -12,4 +12,5 @@ class SupabaseConfig {
   static const String usersTable = 'users';
   static const String permissionsTable = 'permissions';
   static const String notificationsTable = 'notifications';
+  static const String borrowRequestsTable = 'borrow_requests';
 }

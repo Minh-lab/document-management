@@ -48,7 +48,7 @@ class SupabaseStorageService {
 
       // Upload bytes to Supabase Storage
       // bucket: 'documents' (cần tạo bucket này trong Supabase Dashboard)
-      final uploadResult = await _client.storage
+      await _client.storage
           .from('documents')
           .uploadBinary(
             storagePath,
@@ -103,19 +103,17 @@ class SupabaseStorageService {
   }
 
   // Lấy signed URL (cho bucket private)
-  Future<String?> getSignedUrl(
+  Future<String> getSignedUrl(
     String storagePath, {
     int expiresIn = 3600,
   }) async {
-    try {
-      final url = await _client.storage
-          .from('documents')
-          .createSignedUrl(storagePath, expiresIn);
-      return url;
-    } catch (e) {
-      print('❌ Error getting signed URL: $e');
-      return null;
-    }
+    return _client.storage
+        .from('documents')
+        .createSignedUrl(storagePath, expiresIn);
+  }
+
+  String getPublicUrl(String storagePath) {
+    return _client.storage.from('documents').getPublicUrl(storagePath);
   }
 
   String _getStorageErrorMessage(String message) {

@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../colors.dart';
 import '../functions.dart';
 import '../struct/document_model.dart';
+import '../struct/permission_model.dart';
 import '../utils/responsive.dart';
+import '../utils/pdf_opener_stub.dart'
+    if (dart.library.js_interop) '../utils/pdf_opener_web.dart'
+    as pdf_opener;
+import '../widgets/borrow_request_dialog.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/share_dialog.dart';
 import '../widgets/state_views.dart';
@@ -24,6 +30,7 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
   DocumentModel? _document;
   bool _isLoading = true;
   bool _changed = false;
+  bool _canEdit = false;
   String? _error;
 
   @override
@@ -40,9 +47,14 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
 
     try {
       final document = await getDocumentById(widget.documentId);
+      final isOwner = document?.ownerId == currentUserId;
+      final role = document == null || isOwner
+          ? null
+          : await getSharePermission(document.id);
       if (!mounted) return;
       setState(() {
         _document = document;
+        _canEdit = isOwner || role == PermissionRole.editor;
         _isLoading = false;
       });
     } catch (error) {
@@ -104,25 +116,105 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
     );
   }
 
+  Future<void> _requestBorrow() async {
+    final document = _document;
+    if (document == null) return;
+    final sent = await showDialog<bool>(
+      context: context,
+      builder: (_) => BorrowRequestDialog(document: document),
+    );
+    if (!mounted || sent != true) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Đã gửi yêu cầu mượn tài liệu')),
+    );
+  }
+
+  Future<void> _setBorrowable(bool value) async {
+    final document = _document;
+    if (document == null) return;
+    try {
+      await setDocumentBorrowable(documentId: document.id, isBorrowable: value);
+      if (!mounted) return;
+      setState(() => _document = document.copyWith(isBorrowable: value));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            value
+                ? 'Đã cho phép người khác gửi yêu cầu mượn'
+                : 'Đã tắt quyền cho mượn',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Không thể cập nhật: $error')));
+    }
+  }
+
   Future<void> _openFile() async {
     final document = _document;
-    final url = document?.openUrl;
-    if (document == null || url == null || url.isEmpty) {
+    final storagePath = document?.storagePath;
+    if (document == null ||
+        (storagePath == null && (document.openUrl?.isEmpty ?? true))) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Tài liệu này không có tệp đính kèm')),
       );
       return;
     }
 
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
-      return;
-    }
+    try {
+      final savedUrl = document.fileUrl;
+      final savedUri = savedUrl == null ? null : Uri.tryParse(savedUrl);
+      final isFirebaseDownloadUrl =
+          savedUri?.host == 'firebasestorage.googleapis.com';
+      if (kIsWeb && storagePath != null && !isFirebaseDownloadUrl) {
+        final bytes = await storageService.getFileBytes(storagePath);
+        if (bytes == null || bytes.isEmpty) {
+          throw Exception(
+            'Không tải được tệp từ Supabase Storage. '
+            'Kiểm tra tệp có tồn tại trong bucket documents không.',
+          );
+        }
+        if (!_hasPdfSignature(bytes)) {
+          throw Exception(
+            'Tệp đính kèm không có định dạng PDF hợp lệ. '
+            'Hãy tải lại đúng tệp PDF.',
+          );
+        }
+        if (!pdf_opener.openPdfBytes(bytes)) {
+          throw Exception('Trình duyệt đã chặn cửa sổ xem PDF mới.');
+        }
+        return;
+      }
 
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(const SnackBar(content: Text('Không thể mở tệp này')));
+      final url = isFirebaseDownloadUrl
+          ? savedUrl!
+          : storagePath != null
+          ? await storageService.getSignedUrl(storagePath)
+          : document.openUrl!;
+      final uri = Uri.parse(url);
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+        throw Exception('Trình duyệt không mở được tệp');
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Không tải được tệp: ${error.toString()}'),
+          duration: const Duration(seconds: 8),
+        ),
+      );
+    }
+  }
+
+  bool _hasPdfSignature(List<int> bytes) {
+    const signature = [0x25, 0x50, 0x44, 0x46, 0x2D];
+    if (bytes.length < signature.length) return false;
+    for (var index = 0; index < signature.length; index++) {
+      if (bytes[index] != signature[index]) return false;
+    }
+    return true;
   }
 
   void _goBack() {
@@ -140,41 +232,46 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
         title: const Text('Chi tiết tài liệu'),
         actions: [
           if (_document != null) ...[
-            IconButton(
-              tooltip: 'Chỉnh sửa',
-              icon: const Icon(Icons.edit_outlined),
-              onPressed: _edit,
-            ),
-            PopupMenuButton<String>(
-              tooltip: 'Tùy chọn',
-              onSelected: (value) {
-                if (value == 'share') _share();
-                if (value == 'delete') _delete();
-              },
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                  value: 'share',
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.share_outlined),
-                    title: Text('Chia sẻ'),
-                  ),
-                ),
-                PopupMenuItem(
-                  value: 'delete',
-                  child: ListTile(
-                    dense: true,
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.delete_outline, color: AppColors.error),
-                    title: Text(
-                      'Xóa tài liệu',
-                      style: TextStyle(color: AppColors.error),
+            if (_canEdit)
+              IconButton(
+                tooltip: 'Chỉnh sửa',
+                icon: const Icon(Icons.edit_outlined),
+                onPressed: _edit,
+              ),
+            if (_document!.ownerId == currentUserId)
+              PopupMenuButton<String>(
+                tooltip: 'Tùy chọn',
+                onSelected: (value) {
+                  if (value == 'share') _share();
+                  if (value == 'delete') _delete();
+                },
+                itemBuilder: (context) => const [
+                  PopupMenuItem(
+                    value: 'share',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.share_outlined),
+                      title: Text('Chia sẻ'),
                     ),
                   ),
-                ),
-              ],
-            ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(
+                        Icons.delete_outline,
+                        color: AppColors.error,
+                      ),
+                      title: Text(
+                        'Xóa tài liệu',
+                        style: TextStyle(color: AppColors.error),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             const SizedBox(width: 8),
           ],
         ],
@@ -216,6 +313,10 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _buildHeaderCard(context, document),
+              if (document.ownerId == currentUserId) ...[
+                const SizedBox(height: 16),
+                _buildBorrowAvailabilityCard(document),
+              ],
               const SizedBox(height: 16),
               _buildAttachmentCard(context, document),
               const SizedBox(height: 16),
@@ -224,6 +325,22 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildBorrowAvailabilityCard(DocumentModel document) {
+    return Card(
+      child: SwitchListTile(
+        value: document.isBorrowable,
+        onChanged: _setBorrowable,
+        secondary: const Icon(Icons.swap_horiz_rounded),
+        title: const Text('Cho phép mượn tài liệu'),
+        subtitle: Text(
+          document.isBorrowable
+              ? 'Người khác có thể gửi yêu cầu mượn có thời hạn.'
+              : 'Tài liệu chưa xuất hiện trong danh sách có thể mượn.',
+        ),
+      ),
     );
   }
 
@@ -277,16 +394,24 @@ class _DocumentDetailPageState extends State<DocumentDetailPage> {
               spacing: 10,
               runSpacing: 10,
               children: [
-                FilledButton.icon(
-                  onPressed: _edit,
-                  icon: const Icon(Icons.edit_outlined, size: 18),
-                  label: const Text('Chỉnh sửa'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _share,
-                  icon: const Icon(Icons.share_outlined, size: 18),
-                  label: const Text('Chia sẻ'),
-                ),
+                if (_canEdit)
+                  FilledButton.icon(
+                    onPressed: _edit,
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: const Text('Chỉnh sửa'),
+                  ),
+                if (document.ownerId == currentUserId)
+                  OutlinedButton.icon(
+                    onPressed: _share,
+                    icon: const Icon(Icons.share_outlined, size: 18),
+                    label: const Text('Chia sẻ'),
+                  ),
+                if (document.ownerId != currentUserId && document.isBorrowable)
+                  OutlinedButton.icon(
+                    onPressed: _requestBorrow,
+                    icon: const Icon(Icons.outbox_outlined, size: 18),
+                    label: const Text('Yêu cầu mượn'),
+                  ),
                 if (document.hasAttachment)
                   OutlinedButton.icon(
                     onPressed: _openFile,

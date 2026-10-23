@@ -25,14 +25,30 @@ class _DocumentListPageState extends State<DocumentListPage> {
   final _searchController = TextEditingController();
   Timer? _debounce;
   List<DocumentModel> _documents = [];
+  List<DocumentModel> _sharedDocuments = [];
   List<CategoryModel> _categories = [];
   int? _selectedCategoryId;
+  bool _showSharedDocuments = false;
   bool _isLoading = true;
   String? _error;
   RealtimeChannel? _realtimeChannel;
 
   bool get _hasFilter =>
       _searchController.text.trim().isNotEmpty || _selectedCategoryId != null;
+
+  List<DocumentModel> get _visibleDocuments {
+    if (!_showSharedDocuments) return _documents;
+    return _sharedDocuments.where((document) {
+      final keyword = _searchController.text.trim().toLowerCase();
+      final matchesKeyword =
+          keyword.isEmpty ||
+          document.title.toLowerCase().contains(keyword) ||
+          (document.description?.toLowerCase().contains(keyword) ?? false);
+      return matchesKeyword &&
+          (_selectedCategoryId == null ||
+              document.categoryId == _selectedCategoryId);
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -65,12 +81,14 @@ class _DocumentListPageState extends State<DocumentListPage> {
           keyword: _searchController.text.trim(),
           categoryId: _selectedCategoryId,
         ),
+        getSharedWithMe(),
       ]);
 
       if (!mounted) return;
       setState(() {
         _categories = results[0] as List<CategoryModel>;
         _documents = results[1] as List<DocumentModel>;
+        _sharedDocuments = results[2] as List<DocumentModel>;
         _isLoading = false;
         _error = null;
       });
@@ -156,11 +174,13 @@ class _DocumentListPageState extends State<DocumentListPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openForm(),
-        icon: const Icon(Icons.add),
-        label: const Text('Thêm'),
-      ),
+      floatingActionButton: _showSharedDocuments
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () => _openForm(),
+              icon: const Icon(Icons.add),
+              label: const Text('Thêm'),
+            ),
       body: Column(
         children: [
           Padding(
@@ -170,6 +190,26 @@ class _DocumentListPageState extends State<DocumentListPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(
+                        value: false,
+                        icon: Icon(Icons.folder_outlined),
+                        label: Text('Của tôi'),
+                      ),
+                      ButtonSegment(
+                        value: true,
+                        icon: Icon(Icons.people_outline),
+                        label: Text('Được chia sẻ'),
+                      ),
+                    ],
+                    selected: {_showSharedDocuments},
+                    onSelectionChanged: (selection) {
+                      setState(() => _showSharedDocuments = selection.first);
+                      _load(showLoading: false);
+                    },
+                  ),
+                  const SizedBox(height: 12),
                   _SearchField(
                     controller: _searchController,
                     onChanged: _onSearchChanged,
@@ -232,17 +272,29 @@ class _DocumentListPageState extends State<DocumentListPage> {
       );
     }
 
-    if (_documents.isEmpty) {
+    if (_visibleDocuments.isEmpty) {
       return AppEmptyView(
         icon: _hasFilter ? Icons.search_off : Icons.folder_open,
         title: _hasFilter
             ? 'Không tìm thấy tài liệu phù hợp'
+            : _showSharedDocuments
+            ? 'Chưa có tài liệu được chia sẻ'
             : 'Bạn chưa có tài liệu nào',
         message: _hasFilter
             ? 'Thử từ khóa khác hoặc bỏ bộ lọc hiện tại.'
+            : _showSharedDocuments
+            ? 'Tài liệu được chia sẻ với bạn sẽ xuất hiện ở đây.'
             : 'Nhấn "Thêm" để tạo tài liệu đầu tiên của bạn.',
-        actionLabel: _hasFilter ? 'Xóa bộ lọc' : 'Thêm tài liệu',
-        onAction: _hasFilter ? _clearFilters : () => _openForm(),
+        actionLabel: _hasFilter
+            ? 'Xóa bộ lọc'
+            : _showSharedDocuments
+            ? null
+            : 'Thêm tài liệu',
+        onAction: _hasFilter
+            ? _clearFilters
+            : _showSharedDocuments
+            ? null
+            : () => _openForm(),
       );
     }
 
@@ -251,13 +303,15 @@ class _DocumentListPageState extends State<DocumentListPage> {
       child: ContentWidth(
         maxWidth: 1200,
         child: DocumentGrid(
-          documents: _documents,
+          documents: _visibleDocuments,
           padding: context.pagePadding.add(const EdgeInsets.only(bottom: 88)),
           physics: const AlwaysScrollableScrollPhysics(),
           onTap: _openDetail,
-          onEdit: (document) => _openForm(document),
-          onDelete: _deleteDocument,
-          onShare: _openShareDialog,
+          onEdit: _showSharedDocuments
+              ? null
+              : (document) => _openForm(document),
+          onDelete: _showSharedDocuments ? null : _deleteDocument,
+          onShare: _showSharedDocuments ? null : _openShareDialog,
         ),
       ),
     );

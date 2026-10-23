@@ -45,6 +45,7 @@ dependencies:
   
   # Supabase
   supabase_flutter: ^2.5.6
+  web: ^1.1.1
   
   # Cross-file handling (XFile for cross-platform file operations)
   cross_file: ^0.3.3+4

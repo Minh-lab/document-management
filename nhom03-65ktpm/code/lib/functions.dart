@@ -1,11 +1,7 @@
-import 'dart:convert';
-
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart' as firebase_auth;
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:http/http.dart' as http;
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'services/supabase_service.dart';
 import 'services/supabase_storage_service.dart';
@@ -14,6 +10,7 @@ import 'struct/document_model.dart';
 import 'struct/user_model.dart';
 import 'struct/permission_model.dart';
 import 'struct/notification_model.dart';
+import 'struct/borrow_request_model.dart';
 
 final supabaseService = SupabaseService();
 final storageService = SupabaseStorageService();
@@ -38,65 +35,27 @@ Future<void> syncSessionWithSupabase() async {
   await _syncFirebaseUserToSupabase(user);
 }
 
-/// Sync Firebase user với Supabase Auth (gọi Edge Function để verify Firebase token và tạo Supabase JWT)
+/// Syncs the Firebase profile to Supabase.
 Future<void> _syncFirebaseUserToSupabase(
   firebase_auth.User firebaseUser,
 ) async {
-  try {
-    print('🔄 Starting sync of Firebase user: ${firebaseUser.uid}');
-
-    // Lấy Firebase ID token
-    final idToken = await firebaseUser.getIdToken(true);
-    print('🔑 Got Firebase ID token for user: ${firebaseUser.uid}');
-
-    // Gọi Supabase Edge Function để verify Firebase token và lấy Supabase JWT
-    final response = await http.post(
-      Uri.parse(
-        'https://lwebnjcszbldlqwjrcan.supabase.co/functions/v1/verify-firebase-token',
-      ),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $idToken',
-      },
-    );
-
-    print('📡 Edge Function response status: ${response.statusCode}');
-    print('📡 Edge Function response body: ${response.body}');
-
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      print('📦 Parsed response data: $data');
-      final supabaseToken = data['token'] as String?;
-
-      if (supabaseToken != null) {
-        // Set Supabase session với token từ Edge Function
-        await Supabase.instance.client.auth.setSession(supabaseToken);
-        print('✅ Synced Firebase user to Supabase: ${firebaseUser.uid}');
-        print('🔐 Supabase session set successfully');
-      } else {
-        print('⚠️ No token in response data');
-      }
-    } else {
-      print('⚠️ Edge Function failed with status: ${response.statusCode}');
-    }
-  } catch (e, stackTrace) {
-    print('❌ Exception during sync Firebase user to Supabase: $e');
-    print('📍 Stack trace: $stackTrace');
-  }
+  await supabaseService.upsertUser(
+    id: firebaseUser.uid,
+    email: firebaseUser.email,
+    displayName: firebaseUser.displayName,
+    avatarUrl: firebaseUser.photoURL,
+  );
 }
 
-/// Đăng nhập bằng Email/Mật khẩu
+/// Sign in with email and password.
 Future<firebase_auth.UserCredential> signInWithEmail({
   required String email,
   required String password,
 }) async {
-  final credential = await firebase_auth.FirebaseAuth.instance
-      .signInWithEmailAndPassword(email: email.trim(), password: password);
-
-  if (credential.user != null) {
-    await _syncFirebaseUserToSupabase(credential.user!);
-  }
-  return credential;
+  return firebase_auth.FirebaseAuth.instance.signInWithEmailAndPassword(
+    email: email.trim(),
+    password: password,
+  );
 }
 
 /// Đăng ký tài khoản mới bằng Email/Mật khẩu
@@ -109,23 +68,16 @@ Future<firebase_auth.UserCredential> registerWithEmail({
       .createUserWithEmailAndPassword(email: email.trim(), password: password);
 
   final user = credential.user;
-  if (user != null) {
-    if (displayName != null && displayName.trim().isNotEmpty) {
-      await user.updateDisplayName(displayName.trim());
-      await user.reload();
-    }
-    await _syncFirebaseUserToSupabase(user);
+  if (user != null && displayName != null && displayName.trim().isNotEmpty) {
+    await user.updateDisplayName(displayName.trim());
+    await user.reload();
   }
   return credential;
 }
 
 /// Đăng nhập ẩn danh để dùng thử
 Future<void> signInAsGuest() async {
-  final credential = await firebase_auth.FirebaseAuth.instance
-      .signInAnonymously();
-  if (credential.user != null) {
-    await _syncFirebaseUserToSupabase(credential.user!);
-  }
+  await firebase_auth.FirebaseAuth.instance.signInAnonymously();
 }
 
 /// Đăng nhập bằng Google
@@ -142,11 +94,6 @@ Future<firebase_auth.UserCredential?> signInWithGoogle() async {
 
   final userCredential = await firebase_auth.FirebaseAuth.instance
       .signInWithCredential(credential);
-
-  // Sync Google user với Supabase
-  if (userCredential.user != null) {
-    await _syncFirebaseUserToSupabase(userCredential.user!);
-  }
 
   return userCredential;
 }
@@ -188,7 +135,6 @@ String friendlyAuthError(Object error) {
 Future<void> signOut() async {
   await googleSignIn.signOut();
   await firebase_auth.FirebaseAuth.instance.signOut();
-  await Supabase.instance.client.auth.signOut();
 }
 
 /// Người dùng Firebase hiện tại
@@ -286,7 +232,7 @@ Future<DocumentModel> addDocument({
       title: title,
       description: description,
       filePath: filePath,
-      fileUrl: fileUrl,
+      fileUrl: storageService.getPublicUrl(newStoragePath),
       storagePath: newStoragePath,
       categoryId: categoryId,
     );
@@ -363,21 +309,20 @@ Stream<List<DocumentModel>> getDocumentsStream() {
 
 // Helper: Di chuyển file trong Supabase Storage (copy + delete)
 Future<void> _moveFileInStorage(String oldPath, String newPath) async {
-  try {
-    // Download from old path
-    final bytes = await storageService.getFileBytes(oldPath);
+  final bytes = await storageService.getFileBytes(oldPath);
+  if (bytes == null) {
+    throw Exception('Không thể đọc tệp tại đường dẫn tạm: $oldPath');
+  }
 
-    if (bytes == null) {
-      throw Exception('Failed to download file from $oldPath');
-    }
+  if (!await storageService.uploadBytes(newPath, bytes)) {
+    throw Exception('Không thể chuyển tệp đến đường dẫn chính thức: $newPath');
+  }
 
-    // Upload to new path
-    await storageService.uploadBytes(newPath, bytes);
-
-    // Delete old file
-    await storageService.deleteDocument(oldPath);
-  } catch (e) {
-    print('Error moving file: $e');
+  final deleteResult = await storageService.deleteDocument(oldPath);
+  if (!deleteResult.success) {
+    throw Exception(
+      'Đã chuyển tệp nhưng không thể xóa bản tạm: ${deleteResult.error}',
+    );
   }
 }
 
@@ -506,10 +451,88 @@ Future<List<PermissionModel>> getDocumentShares(int documentId) async {
   return await supabaseService.getDocumentPermissions(documentId);
 }
 
+Future<PermissionRole?> getSharePermission(int documentId) {
+  return supabaseService.getUserPermission(documentId, currentUserId);
+}
+
 /// Lấy tài liệu được chia sẻ cho user hiện tại
 Future<List<DocumentModel>> getSharedWithMe() async {
   return await supabaseService.getSharedDocuments(currentUserId);
 }
+
+// ==================== BORROW REQUESTS ====================
+
+Future<List<DocumentModel>> getBorrowableDocuments({String? keyword}) async {
+  if (currentUserId.isEmpty) throw Exception('Bạn cần đăng nhập');
+  return supabaseService.getBorrowableDocuments(
+    keyword: keyword,
+    excludeUserId: currentUserId,
+  );
+}
+
+Future<void> setDocumentBorrowable({
+  required int documentId,
+  required bool isBorrowable,
+}) async {
+  if (currentUserId.isEmpty) throw Exception('Bạn cần đăng nhập');
+  await supabaseService.setDocumentBorrowable(
+    documentId: documentId,
+    ownerId: currentUserId,
+    isBorrowable: isBorrowable,
+  );
+}
+
+Future<void> createBorrowRequest({
+  required int documentId,
+  required String note,
+  required DateTime dueAt,
+}) async {
+  if (currentUserId.isEmpty) throw Exception('Bạn cần đăng nhập');
+  await supabaseService.createBorrowRequest(
+    documentId: documentId,
+    note: note,
+    dueAt: dueAt,
+  );
+}
+
+Future<List<BorrowRequestModel>> getMyBorrowRequests() async {
+  if (currentUserId.isEmpty) throw Exception('Bạn cần đăng nhập');
+  return supabaseService.getBorrowRequests(
+    userId: currentUserId,
+    incoming: false,
+  );
+}
+
+Future<List<BorrowRequestModel>> getIncomingBorrowRequests() async {
+  if (currentUserId.isEmpty) throw Exception('Bạn cần đăng nhập');
+  return supabaseService.getBorrowRequests(
+    userId: currentUserId,
+    incoming: true,
+  );
+}
+
+Future<void> expireBorrowRequests() => supabaseService.expireBorrowRequests();
+
+Future<void> respondToBorrowRequest({
+  required int requestId,
+  required bool approve,
+  String? reason,
+}) async {
+  await supabaseService.respondToBorrowRequest(
+    requestId: requestId,
+    approve: approve,
+    reason: reason,
+  );
+}
+
+Future<void> cancelBorrowRequest(int requestId) =>
+    supabaseService.cancelBorrowRequest(requestId);
+
+Future<void> requestBorrowReturn(int requestId) =>
+    supabaseService.requestBorrowReturn(requestId);
+
+Future<void> confirmBorrowReturn(int requestId) =>
+    supabaseService.confirmBorrowReturn(requestId);
 
 // ==================== NOTIFICATIONS ====================
 

@@ -312,9 +312,12 @@ class _ShareDialogState extends State<ShareDialog> {
       subtitle: Text(user.email ?? ''),
       trailing: PopupMenuButton<PermissionRole>(
         onSelected: (role) => _addShare(user, role),
-        itemBuilder: (context) => PermissionRole.values.map((role) {
-          return PopupMenuItem(value: role, child: Text(role.label));
-        }).toList(),
+        itemBuilder: (context) => PermissionRole.values
+            .where((role) => role != PermissionRole.owner)
+            .map((role) {
+              return PopupMenuItem(value: role, child: Text(role.label));
+            })
+            .toList(),
         child: _isLoading
             ? const SizedBox(
                 width: 20,
@@ -353,9 +356,12 @@ class _ShareDialogState extends State<ShareDialog> {
           DropdownButton<PermissionRole>(
             value: permission.role,
             underline: const SizedBox(),
-            items: PermissionRole.values.map((role) {
-              return DropdownMenuItem(value: role, child: Text(role.label));
-            }).toList(),
+            items: PermissionRole.values
+                .where((role) => role != PermissionRole.owner)
+                .map((role) {
+                  return DropdownMenuItem(value: role, child: Text(role.label));
+                })
+                .toList(),
             onChanged: (role) {
               if (role != null && role != permission.role) {
                 _updateShare(permission, role);

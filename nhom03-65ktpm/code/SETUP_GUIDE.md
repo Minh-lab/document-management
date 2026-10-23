@@ -73,8 +73,18 @@ Thêm vào `web/index.html` trước `</head>`:
 
 ### 2.2 Chạy SQL Schema
 1. Vào SQL Editor → New Query
-2. Copy nội dung từ file `supabase_schema.sql` vào
-3. Run → Kiểm tra không có lỗi
+2. Chạy lần lượt `supabase_schema.sql`, `supabase_rls_policies.sql`,
+   `supabase_notifications.sql`, rồi `supabase_borrow_requests.sql`.
+3. Kiểm tra từng script hoàn tất không có lỗi.
+
+> Ứng dụng dùng Firebase ID token làm access token cho Supabase. Vì vậy cần bật
+> Firebase trong **Authentication → Third-Party Auth** của đúng project Supabase,
+> nhập đúng Firebase Project ID. Mỗi tài khoản Firebase phải có custom claim
+> `role: 'authenticated'`, được cấp từ môi trường server bằng Firebase Admin SDK;
+> không thể và không nên cấp claim này từ Flutter client. Sau khi thêm claim,
+> người dùng cần đăng xuất/đăng nhập lại hoặc làm mới ID token. Nếu thiếu kết nối,
+> Supabase từ chối token (`PGRST301`); nếu thiếu claim/quyền RPC, lời gọi có thể
+> bị từ chối (`42501`).
 
 ### 2.3 Lấy API Keys
 Settings → API:
@@ -83,14 +93,20 @@ Settings → API:
 
 > ⚠️ **Không bao giờ dùng service_role key trong client app!**
 
-### 2.4 Cấu hình Auth (Optional)
+### 2.4 Cấu hình Auth
 Authentication → Providers → Email → Enable
+Authentication → Third-Party Auth → Firebase → nhập Firebase Project ID.
 Authentication → URL Configuration:
 - Site URL: `http://localhost:3000` (dev) / `https://yourdomain.com` (prod)
 - Redirect URLs: thêm deep link scheme nếu có
 
+Ứng dụng tự gửi Firebase ID token cho Supabase khi gọi API; không cần tự ký JWT
+hoặc triển khai Edge Function đổi token. RPC yêu cầu mượn chỉ cấp cho role
+`authenticated`, nên cần cả Third-Party Auth lẫn custom claim trên mọi tài khoản.
+
 ### 2.5 Enable Realtime
-Database → Replication → Enable cho tables: `documents`, `categories`
+Database → Replication → Enable cho tables: `documents`, `categories`,
+`permissions`, `borrow_requests`, `notifications`.
 
 ---
 

@@ -5,6 +5,7 @@ import '../widgets/responsive_scaffold.dart';
 import '../widgets/user_menu_button.dart';
 import 'document_list_page.dart';
 import 'home_page.dart';
+import 'borrow_requests_page.dart';
 import 'settings_page.dart';
 
 /// Khung chính sau khi đăng nhập, chứa các tab và điều hướng thích ứng.
@@ -30,6 +31,11 @@ class _AppShellState extends State<AppShell> {
       label: 'Tài liệu',
     ),
     AppDestination(
+      icon: Icons.swap_horiz_rounded,
+      selectedIcon: Icons.swap_horiz_rounded,
+      label: 'Mượn & chia sẻ',
+    ),
+    AppDestination(
       icon: Icons.settings_outlined,
       selectedIcon: Icons.settings_rounded,
       label: 'Cài đặt',
@@ -42,6 +48,8 @@ class _AppShellState extends State<AppShell> {
         return 'Trang chủ';
       case 1:
         return 'Tài liệu của tôi';
+      case 2:
+        return 'Mượn & chia sẻ tài liệu';
       default:
         return 'Cài đặt';
     }
@@ -59,7 +67,7 @@ class _AppShellState extends State<AppShell> {
       actions: [
         const NotificationBellButton(),
         UserMenuButton(
-          onOpenSettings: () => setState(() => _selectedIndex = 2),
+          onOpenSettings: () => setState(() => _selectedIndex = 3),
         ),
       ],
       body: IndexedStack(
@@ -69,6 +77,7 @@ class _AppShellState extends State<AppShell> {
             onViewAllDocuments: () => setState(() => _selectedIndex = 1),
           ),
           const DocumentListPage(),
+          const BorrowRequestsPage(),
           const SettingsPage(),
         ],
       ),
