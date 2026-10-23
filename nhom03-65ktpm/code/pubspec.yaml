@@ -62,8 +62,13 @@ dependencies:
   intl: ^0.20.3
   uuid: ^4.5.1
   http: ^1.2.0
+  # Bản đồ vị trí tài liệu (OpenStreetMap)
   flutter_map: ^8.3.2
   latlong2: ^0.10.1
+  # Xem trước và mở tệp đính kèm
+  photo_view: ^0.15.0
+  open_filex: ^5.0.0
+  pdfrx: ^2.9.0
 
 dev_dependencies:
   flutter_test:

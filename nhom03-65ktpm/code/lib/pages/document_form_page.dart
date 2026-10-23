@@ -3,10 +3,16 @@ import 'package:flutter/material.dart';
 
 import '../colors.dart';
 import '../functions.dart';
+import '../services/tag_service.dart';
+import '../struct/category_model.dart';
+import '../struct/document_model.dart';
+import '../struct/permission_model.dart';
+import '../struct/tag_model.dart';
 import '../utils/responsive.dart';
 import '../widgets/document_location_map.dart';
 import '../widgets/state_views.dart';
 import 'location_picker_page.dart';
+import 'tag_management_page.dart';
 
 class DocumentFormPage extends StatefulWidget {
   const DocumentFormPage({super.key, this.document});
@@ -23,8 +29,11 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _tagService = TagService();
 
   List<CategoryModel> _categories = [];
+  List<TagModel> _tags = [];
+  final Set<int> _selectedTagIds = {};
   int? _selectedCategoryId;
   PlatformFile? _selectedFile;
   DocumentLocationModel? _location;
@@ -32,7 +41,7 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
   bool _isLoadingLocation = false;
   bool _isLoadingCategories = true;
   bool _isSaving = false;
-  String? _categoriesError;
+  String? _loadError;
   String? _saveError;
 
   @override
@@ -71,10 +80,7 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
       Navigator.of(context).pop();
       return;
     }
-    final permission = await supabaseService.getUserPermission(
-      documentId,
-      currentUserId,
-    );
+    final permission = await getUserPermission(documentId);
     if (permission != PermissionRole.owner &&
         permission != PermissionRole.editor) {
       if (!mounted) return;
@@ -97,14 +103,23 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
   Future<void> _loadCategories() async {
     setState(() {
       _isLoadingCategories = true;
-      _categoriesError = null;
+      _loadError = null;
     });
 
     try {
       final categories = await getCategories();
+      final tags = await _tagService.getTags();
+      final document = widget.document;
+      final documentTags = document == null
+          ? <TagModel>[]
+          : await _tagService.getTagsForDocument(document.id);
       if (!mounted) return;
       setState(() {
         _categories = categories;
+        _tags = tags;
+        _selectedTagIds
+          ..clear()
+          ..addAll(documentTags.map((tag) => tag.id));
         _isLoadingCategories = false;
         if (_selectedCategoryId == null && categories.isNotEmpty) {
           _selectedCategoryId = categories.first.id;
@@ -113,9 +128,30 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _categoriesError = error.toString().replaceFirst('Exception: ', '');
+        _loadError = error.toString().replaceFirst('Exception: ', '');
         _isLoadingCategories = false;
       });
+    }
+  }
+
+  Future<void> _manageTags() async {
+    await Navigator.of(
+      context,
+    ).push<void>(MaterialPageRoute(builder: (_) => const TagManagementPage()));
+    if (!mounted) return;
+
+    try {
+      final tags = await _tagService.getTags();
+      if (!mounted) return;
+      setState(() {
+        _tags = tags;
+        _selectedTagIds.removeWhere((id) => !tags.any((tag) => tag.id == id));
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Không tải được danh sách tag: $error')),
+      );
     }
   }
 
@@ -174,18 +210,19 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
     });
 
     try {
+      late final DocumentModel savedDocument;
       if (widget.document == null) {
-        final document = await addDocument(
+        savedDocument = await addDocument(
           title: _titleController.text.trim(),
           description: _descriptionController.text.trim(),
           file: _selectedFile,
           categoryId: _selectedCategoryId!,
         );
         if (_location != null && !_location!.isEmpty) {
-          await _persistLocation(document.id);
+          await _persistLocation(savedDocument.id);
         }
       } else {
-        await updateDocument(
+        savedDocument = await updateDocument(
           id: widget.document!.id,
           title: _titleController.text.trim(),
           description: _descriptionController.text.trim(),
@@ -198,6 +235,12 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
           await _persistLocation(widget.document!.id);
         }
       }
+      await _tagService.setDocumentTags(
+        documentId: savedDocument.id,
+        tagIds: _selectedTagIds.toList(),
+      );
+      // Cập nhật sở thích theo tag cho Recommendation (UC-11).
+      await recordTagging(_selectedTagIds.toList());
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -368,10 +411,10 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
       return const AppLoadingView(message: 'Đang tải danh mục...');
     }
 
-    if (_categoriesError != null) {
+    if (_loadError != null) {
       return AppErrorView(
-        title: 'Không tải được danh mục',
-        message: _categoriesError!,
+        title: 'Không tải được dữ liệu biểu mẫu',
+        message: _loadError!,
         onRetry: _loadCategories,
       );
     }
@@ -473,14 +516,57 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
       ),
     );
 
+    final tagsSection = _SectionCard(
+      title: 'Tag',
+      subtitle: 'Chọn một hoặc nhiều tag để phân loại tài liệu.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_tags.isEmpty)
+            const Text('Chưa có tag nào.')
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final tag in _tags)
+                  FilterChip(
+                    label: Text(tag.name),
+                    selected: _selectedTagIds.contains(tag.id),
+                    onSelected: _isSaving
+                        ? null
+                        : (selected) {
+                            setState(() {
+                              if (selected) {
+                                _selectedTagIds.add(tag.id);
+                              } else {
+                                _selectedTagIds.remove(tag.id);
+                              }
+                            });
+                          },
+                  ),
+              ],
+            ),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: _isSaving ? null : _manageTags,
+            icon: const Icon(Icons.sell_outlined),
+            label: const Text('Tạo hoặc quản lý tag'),
+          ),
+        ],
+      ),
+    );
+
     return SingleChildScrollView(
       padding: context.pagePadding,
       child: ContentWidth(
         maxWidth: 1000,
         child: Form(
           key: _formKey,
-          child: context.isExpanded
-              ? Row(
+          child: Column(
+            children: [
+              if (context.isExpanded)
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(flex: 3, child: basicInfo),
@@ -497,15 +583,17 @@ class _DocumentFormPageState extends State<DocumentFormPage> {
                     ),
                   ],
                 )
-              : Column(
-                  children: [
-                    basicInfo,
-                    const SizedBox(height: 16),
-                    classification,
-                    const SizedBox(height: 16),
-                    _buildLocationSection(),
-                  ],
-                ),
+              else ...[
+                basicInfo,
+                const SizedBox(height: 16),
+                classification,
+                const SizedBox(height: 16),
+                _buildLocationSection(),
+              ],
+              const SizedBox(height: 16),
+              tagsSection,
+            ],
+          ),
         ),
       ),
     );

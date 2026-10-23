@@ -76,6 +76,11 @@ Thêm vào `web/index.html` trước `</head>`:
 2. Copy nội dung từ file `supabase_schema.sql` vào
 3. Run → Kiểm tra không có lỗi
 
+> Nếu database đã được tạo trước đó và bạn chỉ cần bổ sung chức năng tag, chạy
+> file `supabase_tags_schema.sql` trong SQL Editor. Script tạo `tags`,
+> `document_tags`, bật RLS và tạm cấp quyền thao tác tag cho `anon`/`authenticated`
+> (do app đang dùng Firebase Auth + anon key, chưa có Supabase JWT).
+
 ### 2.3 Lấy API Keys
 Settings → API:
 - **Project URL**: `https://lwebnjcszbldlqwjrcan.supabase.co` (đã có)
@@ -142,6 +147,8 @@ flutter build web --release
 - [ ] Xóa tài liệu → xóa luôn file trên Storage
 - [ ] Realtime: mở 2 tab, thêm/sửa/xóa trên tab 1 → tab 2 cập nhật ngay
 - [ ] Tìm kiếm, lọc theo category
+- [ ] Tạo/sửa/xóa tag; gán nhiều tag trong form tài liệu
+- [ ] Tìm theo tên tag và lọc tài liệu theo nhiều tag
 
 ### 4.2 Debug común issues
 | Lỗi | Nguyên nhân | Khắc phục |

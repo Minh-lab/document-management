@@ -6,9 +6,11 @@ import '../colors.dart';
 import '../functions.dart';
 import '../struct/category_model.dart';
 import '../struct/document_model.dart';
+import '../struct/recommendation_model.dart';
 import '../utils/responsive.dart';
 import '../widgets/confirm_dialog.dart';
 import '../widgets/document_grid.dart';
+import '../widgets/recommendation_section.dart';
 import '../widgets/share_dialog.dart';
 import '../widgets/state_views.dart';
 import 'document_detail_page.dart';
@@ -26,6 +28,7 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   List<DocumentModel> _documents = [];
   List<CategoryModel> _categories = [];
+  List<RecommendationModel> _recommendations = [];
   bool _isLoading = true;
   String? _error;
   RealtimeChannel? _realtimeChannel;
@@ -44,11 +47,12 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool showLoading = true}) async {
     setState(() {
-      _isLoading = _documents.isEmpty;
+      _isLoading = showLoading && _documents.isEmpty;
       _error = null;
     });
+    _loadRecommendations();
 
     try {
       final results = await Future.wait([getCategories(), getDocuments()]);
@@ -67,6 +71,47 @@ class _HomePageState extends State<HomePage> {
         _isLoading = false;
       });
     }
+  }
+
+  /// Khối gợi ý tải riêng: lỗi ở đây không làm hỏng trang chủ (UC-11, ngoại lệ 11b).
+  Future<void> _loadRecommendations() async {
+    try {
+      final items = await getRecommendations();
+      if (!mounted) return;
+      setState(() => _recommendations = items);
+    } catch (error) {
+      debugPrint('⚠️ Không tải được gợi ý: $error');
+    }
+  }
+
+  Future<void> _openRecommendation(RecommendationModel item) async {
+    final doc = item.document;
+    if (doc.canOpen) {
+      await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => DocumentDetailPage(documentId: doc.id),
+        ),
+      );
+      _load();
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(doc.title),
+        content: Text(
+          '${doc.categoryName} · của ${doc.ownerName.isEmpty ? 'người khác' : doc.ownerName}\n'
+          '${item.reason}\n\n'
+          'Bạn chưa có quyền xem tài liệu này. Hãy gửi yêu cầu mượn cho chủ tài liệu.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Đóng'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _setupRealtime() {
@@ -100,6 +145,17 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _deleteDocument(DocumentModel document) async {
+    final permission = await getUserPermission(document.id);
+    if (!mounted) return;
+    if (permission != PermissionRole.owner) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Chỉ chủ sở hữu tài liệu mới có quyền xóa'),
+        ),
+      );
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => const ConfirmDialog(
@@ -123,11 +179,25 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  void _openShareDialog(DocumentModel document) {
-    showDialog<void>(
+  Future<void> _openShareDialog(DocumentModel document) async {
+    final permission = await getUserPermission(document.id);
+    if (!mounted) return;
+    if (permission != PermissionRole.owner) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Chỉ chủ sở hữu tài liệu mới có quyền chia sẻ'),
+        ),
+      );
+      return;
+    }
+
+    await showDialog<void>(
       context: context,
-      builder: (_) =>
-          ShareDialog(documentId: document.id, documentTitle: document.title),
+      builder: (_) => ShareDialog(
+        documentId: document.id,
+        documentTitle: document.title,
+        onShareChanged: () => _load(),
+      ),
     );
   }
 
@@ -146,7 +216,7 @@ class _HomePageState extends State<HomePage> {
     }
 
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: () => _load(showLoading: false),
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: context.pagePadding,
@@ -162,6 +232,13 @@ class _HomePageState extends State<HomePage> {
                   documents: _documents,
                   categories: _categories.length,
                 ),
+                if (_recommendations.isNotEmpty) ...[
+                  const SizedBox(height: 28),
+                  RecommendationSection(
+                    items: _recommendations,
+                    onTap: _openRecommendation,
+                  ),
+                ],
                 const SizedBox(height: 28),
                 _buildRecentSection(context),
               ],

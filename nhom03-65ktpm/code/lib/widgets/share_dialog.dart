@@ -24,6 +24,12 @@ class ShareDialog extends StatefulWidget {
 }
 
 class _ShareDialogState extends State<ShareDialog> {
+  /// Chủ sở hữu không phải là vai trò có thể cấp qua hộp thoại chia sẻ.
+  static const List<PermissionRole> _assignableRoles = [
+    PermissionRole.viewer,
+    PermissionRole.editor,
+  ];
+
   final _searchController = TextEditingController();
   List<UserModel> _searchResults = [];
   List<PermissionModel> _currentShares = [];
@@ -35,8 +41,15 @@ class _ShareDialogState extends State<ShareDialog> {
   @override
   void initState() {
     super.initState();
-    _currentShares = List.from(widget.existingShares);
+    _currentShares = _visibleShares(widget.existingShares);
     _loadShares();
+  }
+
+  /// Bản ghi owner thuộc về tài liệu, không hiển thị như một lượt chia sẻ.
+  List<PermissionModel> _visibleShares(List<PermissionModel> shares) {
+    return shares
+        .where((permission) => permission.role != PermissionRole.owner)
+        .toList();
   }
 
   /// Tải danh sách người đã được chia sẻ tài liệu (không chặn việc mở dialog)
@@ -46,7 +59,8 @@ class _ShareDialogState extends State<ShareDialog> {
       final shares = await getDocumentShares(widget.documentId);
       if (mounted) {
         setState(() {
-          _currentShares = shares;
+          // Bản ghi owner thuộc về tài liệu, không hiển thị như một lượt chia sẻ.
+          _currentShares = _visibleShares(shares);
           _isLoadingShares = false;
         });
       }
@@ -98,6 +112,14 @@ class _ShareDialogState extends State<ShareDialog> {
   }
 
   Future<void> _addShare(UserModel user, PermissionRole role) async {
+    if (role == PermissionRole.owner) return;
+    if (user.id == currentUserId) {
+      setState(() {
+        _error = 'Không thể chia sẻ tài liệu cho chính mình.';
+      });
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -111,7 +133,7 @@ class _ShareDialogState extends State<ShareDialog> {
       final shares = await getDocumentShares(widget.documentId);
       if (mounted) {
         setState(() {
-          _currentShares = shares;
+          _currentShares = _visibleShares(shares);
           _searchResults = [];
           _searchController.clear();
           _isLoading = false;
@@ -132,6 +154,8 @@ class _ShareDialogState extends State<ShareDialog> {
     PermissionModel permission,
     PermissionRole newRole,
   ) async {
+    if (newRole == PermissionRole.owner) return;
+
     setState(() => _isLoading = true);
 
     try {
@@ -144,7 +168,7 @@ class _ShareDialogState extends State<ShareDialog> {
       final shares = await getDocumentShares(widget.documentId);
       if (mounted) {
         setState(() {
-          _currentShares = shares;
+          _currentShares = _visibleShares(shares);
           _isLoading = false;
         });
         widget.onShareChanged?.call();
@@ -168,7 +192,7 @@ class _ShareDialogState extends State<ShareDialog> {
       final shares = await getDocumentShares(widget.documentId);
       if (mounted) {
         setState(() {
-          _currentShares = shares;
+          _currentShares = _visibleShares(shares);
           _isLoading = false;
         });
         widget.onShareChanged?.call();
@@ -312,7 +336,7 @@ class _ShareDialogState extends State<ShareDialog> {
       subtitle: Text(user.email ?? ''),
       trailing: PopupMenuButton<PermissionRole>(
         onSelected: (role) => _addShare(user, role),
-        itemBuilder: (context) => PermissionRole.values.map((role) {
+        itemBuilder: (context) => _assignableRoles.map((role) {
           return PopupMenuItem(value: role, child: Text(role.label));
         }).toList(),
         child: _isLoading
@@ -353,7 +377,7 @@ class _ShareDialogState extends State<ShareDialog> {
           DropdownButton<PermissionRole>(
             value: permission.role,
             underline: const SizedBox(),
-            items: PermissionRole.values.map((role) {
+            items: _assignableRoles.map((role) {
               return DropdownMenuItem(value: role, child: Text(role.label));
             }).toList(),
             onChanged: (role) {

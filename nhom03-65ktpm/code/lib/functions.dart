@@ -14,7 +14,9 @@ import 'struct/document_model.dart';
 import 'struct/user_model.dart';
 import 'struct/permission_model.dart';
 import 'struct/notification_model.dart';
+import 'struct/recommendation_model.dart';
 import 'struct/document_location_model.dart';
+import 'utils/recommendation_scorer.dart';
 
 export 'struct/category_model.dart';
 export 'struct/document_model.dart';
@@ -136,6 +138,73 @@ Future<void> signInAsGuest() async {
   }
 }
 
+/// Nâng cấp tài khoản ẩn danh (anonymous) lên tài khoản Email/Mật khẩu
+/// Gọi khi người dùng đang dùng thử muốn tạo tài khoản chính thức
+Future<firebase_auth.UserCredential> upgradeAnonymousToEmail({
+  required String email,
+  required String password,
+  String? displayName,
+}) async {
+  final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+  if (currentUser == null) {
+    throw Exception('Không có người dùng đang đăng nhập');
+  }
+  if (!currentUser.isAnonymous) {
+    throw Exception('Người dùng không phải tài khoản ẩn danh');
+  }
+
+  // Tạo credential Email/Password
+  final credential = firebase_auth.EmailAuthProvider.credential(
+    email: email.trim(),
+    password: password,
+  );
+
+  // Link credential với tài khoản anonymous hiện tại
+  final userCredential = await currentUser.linkWithCredential(credential);
+
+  // Cập nhật tên hiển thị nếu có
+  if (displayName != null && displayName.trim().isNotEmpty) {
+    await userCredential.user?.updateDisplayName(displayName.trim());
+    await userCredential.user?.reload();
+  }
+
+  // Đồng bộ lại với Supabase
+  if (userCredential.user != null) {
+    await _syncFirebaseUserToSupabase(userCredential.user!);
+  }
+
+  return userCredential;
+}
+
+/// Nâng cấp tài khoản ẩn danh lên tài khoản Google
+Future<firebase_auth.UserCredential?> upgradeAnonymousToGoogle() async {
+  final currentUser = firebase_auth.FirebaseAuth.instance.currentUser;
+  if (currentUser == null) {
+    throw Exception('Không có người dùng đang đăng nhập');
+  }
+  if (!currentUser.isAnonymous) {
+    throw Exception('Người dùng không phải tài khoản ẩn danh');
+  }
+
+  final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+  if (googleUser == null) return null; // Người dùng hủy
+
+  final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+
+  final credential = firebase_auth.GoogleAuthProvider.credential(
+    accessToken: googleAuth.accessToken,
+    idToken: googleAuth.idToken,
+  );
+
+  final userCredential = await currentUser.linkWithCredential(credential);
+
+  if (userCredential.user != null) {
+    await _syncFirebaseUserToSupabase(userCredential.user!);
+  }
+
+  return userCredential;
+}
+
 /// Đăng nhập bằng Google
 Future<firebase_auth.UserCredential?> signInWithGoogle() async {
   final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
@@ -200,15 +269,26 @@ Future<void> signOut() async {
 }
 
 /// Người dùng Firebase hiện tại
-firebase_auth.User? get currentFirebaseUser =>
-    firebase_auth.FirebaseAuth.instance.currentUser;
+firebase_auth.User? get currentFirebaseUser {
+  try {
+    return firebase_auth.FirebaseAuth.instance.currentUser;
+  } catch (_) {
+    // Firebase chưa được khởi tạo (ví dụ trong widget test hoặc web lỗi cấu hình).
+    return null;
+  }
+}
 
 /// Lấy user ID hiện tại
 String get currentUserId => currentFirebaseUser?.uid ?? '';
 
 /// Lấy stream user auth state
-Stream<firebase_auth.User?> get authStateChanges =>
-    firebase_auth.FirebaseAuth.instance.authStateChanges();
+Stream<firebase_auth.User?> get authStateChanges {
+  try {
+    return firebase_auth.FirebaseAuth.instance.authStateChanges();
+  } catch (_) {
+    return const Stream<firebase_auth.User?>.empty();
+  }
+}
 
 // ==================== CATEGORIES ====================
 
@@ -221,11 +301,13 @@ Future<List<CategoryModel>> getCategories() async {
 Future<List<DocumentModel>> getDocuments({
   String? keyword,
   int? categoryId,
+  Set<int>? documentIds,
 }) async {
   return await supabaseService.getDocuments(
     keyword: keyword,
     categoryId: categoryId,
     userId: currentUserId,
+    documentIds: documentIds,
   );
 }
 
@@ -288,6 +370,9 @@ Future<DocumentModel> addDocument({
     // Di chuyển file trong Firebase Storage (copy + delete)
     await _moveFileInStorage(storagePath, newStoragePath);
 
+    // URL công khai phải trỏ tới đường dẫn mới (trước đó là path tạm).
+    fileUrl = storageService.getPublicUrl(newStoragePath);
+
     // Update document với storage path mới
     return await supabaseService.updateDocument(
       id: document.id,
@@ -317,8 +402,9 @@ Future<DocumentModel> updateDocument({
   if (currentUserId.isEmpty) {
     throw Exception('Bạn cần đăng nhập để chỉnh sửa tài liệu');
   }
-  final permission = await supabaseService.getUserPermission(id, currentUserId);
-  if (permission != PermissionRole.owner && permission != PermissionRole.editor) {
+  final permission = await getUserPermission(id);
+  if (permission != PermissionRole.owner &&
+      permission != PermissionRole.editor) {
     throw Exception('Bạn không có quyền chỉnh sửa tài liệu này');
   }
 
@@ -364,6 +450,14 @@ Future<DocumentModel> updateDocument({
 
 /// Xóa tài liệu (kèm xóa file trên Firebase Storage)
 Future<void> deleteDocument(int id, {String? storagePath}) async {
+  if (currentUserId.isEmpty) {
+    throw Exception('Bạn cần đăng nhập để xóa tài liệu');
+  }
+  final permission = await getUserPermission(id);
+  if (permission != PermissionRole.owner) {
+    throw Exception('Chỉ chủ sở hữu tài liệu mới có quyền xóa');
+  }
+
   if (storagePath != null) {
     await storageService.deleteDocument(storagePath);
   }
@@ -464,12 +558,33 @@ Future<firebase_auth.User> updateAccountProfile({
 
 // ==================== PERMISSIONS (SHARING) ====================
 
+/// Đảm bảo người dùng hiện tại là chủ sở hữu tài liệu.
+Future<void> _ensureSharingOwner(int documentId) async {
+  if (currentUserId.isEmpty) {
+    throw Exception('Bạn cần đăng nhập để chia sẻ tài liệu');
+  }
+  final permission = await getUserPermission(documentId);
+  if (permission != PermissionRole.owner) {
+    throw Exception('Chỉ chủ sở hữu tài liệu mới có quyền chia sẻ');
+  }
+}
+
 /// Chia sẻ tài liệu cho user khác
 Future<PermissionModel> shareDocument({
   required int documentId,
   required String userId,
   required PermissionRole role,
 }) async {
+  if (role == PermissionRole.owner) {
+    throw Exception(
+      'Không thể cấp quyền chủ sở hữu. Chỉ có thể chia sẻ quyền xem hoặc chỉnh sửa.',
+    );
+  }
+  if (userId == currentUserId) {
+    throw Exception('Không thể chia sẻ tài liệu cho chính mình.');
+  }
+  await _ensureSharingOwner(documentId);
+
   final permission = await supabaseService.shareDocument(
     documentId: documentId,
     userId: userId,
@@ -485,11 +600,12 @@ Future<PermissionModel> shareDocument({
         actor?.displayNameOrEmail ??
         currentFirebaseUser?.displayName ??
         'Một người dùng';
+    final roleLabel = role == PermissionRole.editor ? 'chỉnh sửa' : 'xem';
     await createNotification(
       userId: userId,
       title: 'Tài liệu được chia sẻ',
       body:
-          '$actorName đã chia sẻ "${document?.title ?? 'một tài liệu'}" với bạn.',
+          '$actorName đã chia sẻ "${document?.title ?? 'một tài liệu'}" với bạn (quyền $roleLabel).',
       type: 'share',
       documentId: documentId,
     );
@@ -502,6 +618,7 @@ Future<PermissionModel> shareDocument({
 
 /// Xóa quyền chia sẻ
 Future<void> removeShare(int documentId, String userId) async {
+  await _ensureSharingOwner(documentId);
   await supabaseService.removePermission(documentId, userId);
 }
 
@@ -511,6 +628,12 @@ Future<PermissionModel> updateShare({
   required String userId,
   required PermissionRole role,
 }) async {
+  if (role == PermissionRole.owner) {
+    throw Exception(
+      'Không thể chuyển quyền chủ sở hữu. Chỉ có thể đổi giữa quyền xem và chỉnh sửa.',
+    );
+  }
+  await _ensureSharingOwner(documentId);
   return await supabaseService.updatePermission(
     documentId: documentId,
     userId: userId,
@@ -526,6 +649,24 @@ Future<List<PermissionModel>> getDocumentShares(int documentId) async {
 /// Lấy tài liệu được chia sẻ cho user hiện tại
 Future<List<DocumentModel>> getSharedWithMe() async {
   return await supabaseService.getSharedDocuments(currentUserId);
+}
+
+/// Lấy vai trò được chia sẻ của user hiện tại theo từng tài liệu.
+Future<Map<int, PermissionRole>> getSharedDocumentRoles() async {
+  if (currentUserId.isEmpty) return {};
+  return await supabaseService.getPermissionsForUser(currentUserId);
+}
+
+/// Kiểm tra quyền của user trên tài liệu.
+/// Chủ sở hữu được xác định từ documents.user_id, không phụ thuộc
+/// vào việc bảng permissions có bản ghi owner hay không.
+Future<PermissionRole?> getUserPermission(int documentId) async {
+  if (currentUserId.isEmpty) return null;
+
+  final ownerId = await supabaseService.getDocumentOwnerId(documentId);
+  if (ownerId == currentUserId) return PermissionRole.owner;
+
+  return await supabaseService.getUserPermission(documentId, currentUserId);
 }
 
 // ==================== NOTIFICATIONS ====================
@@ -568,6 +709,49 @@ Future<void> createNotification({
     type: type,
     documentId: documentId,
   );
+}
+
+// ==================== RECOMMENDATION (UC-11) ====================
+
+/// Gợi ý tối đa [limit] tài liệu cho người dùng hiện tại, kèm lý do.
+Future<List<RecommendationModel>> getRecommendations({int limit = 5}) async {
+  if (currentUserId.isEmpty) return [];
+  final results = await Future.wait([
+    supabaseService.getUserInterests(currentUserId),
+    supabaseService.getRecommendationCandidates(currentUserId),
+  ]);
+  return rankRecommendations(
+    interests: results[0] as Map<String, double>,
+    candidates: results[1] as List<RecommendationCandidate>,
+    limit: limit,
+  );
+}
+
+/// Ghi nhận người dùng mở tài liệu: lưu lượt xem và tăng sở thích theo tag.
+/// Lỗi (ví dụ chưa chạy SQL) không được làm hỏng màn hình chi tiết.
+Future<void> recordDocumentView(int documentId) async {
+  if (currentUserId.isEmpty) return;
+  try {
+    await supabaseService.recordDocumentView(
+      userId: currentUserId,
+      documentId: documentId,
+    );
+  } catch (error) {
+    debugPrint('⚠️ Không ghi được lượt xem: $error');
+  }
+}
+
+/// Gọi sau khi người dùng gán tag cho tài liệu (UC-06) để tăng sở thích.
+Future<void> recordTagging(List<int> tagIds) async {
+  if (currentUserId.isEmpty) return;
+  try {
+    await supabaseService.bumpTagInterests(
+      userId: currentUserId,
+      tagIds: tagIds,
+    );
+  } catch (error) {
+    debugPrint('⚠️ Không cập nhật được sở thích: $error');
+  }
 }
 
 // ==================== DOCUMENT LOCATIONS ====================
