@@ -273,7 +273,29 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        _showMessage('Dịch vụ định vị GPS chưa bật.');
+        if (!mounted) return;
+        final openSettings = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Bật định vị'),
+            content: const Text(
+              'Dịch vụ định vị GPS đang tắt. Bạn có muốn mở cài đặt vị trí?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Hủy'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Mở cài đặt'),
+              ),
+            ],
+          ),
+        );
+        if (openSettings == true) {
+          await Geolocator.openLocationSettings();
+        }
         return;
       }
 
@@ -287,12 +309,36 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
       }
 
       if (permission == LocationPermission.deniedForever) {
-        _showMessage('Quyền truy cập vị trí bị từ chối vĩnh viễn.');
+        if (!mounted) return;
+        final openSettings = await showDialog<bool>(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text('Quyền vị trí'),
+            content: const Text(
+              'Quyền truy cập vị trí đã bị từ chối vĩnh viễn. '
+              'Bạn có muốn mở cài đặt ứng dụng để cấp quyền?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Hủy'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Mở cài đặt'),
+              ),
+            ],
+          ),
+        );
+        if (openSettings == true) {
+          await Geolocator.openAppSettings();
+        }
         return;
       }
 
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 15),
       );
       if (!mounted) return;
 
