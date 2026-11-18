@@ -12,7 +12,7 @@
 | 2 | Đạt | [Cập nhật] | Thành viên | #3 Phân loại tài liệu bằng Tag | 100% |
 | 3 | Quân | [Cập nhật] | Thành viên | #4 Bản đồ & vị trí tài liệu | 100% |
 | 4 | Đăng | [Cập nhật] | Thành viên | #5 Mượn và chia sẻ tài liệu | 100% |
-| 5 | Hạnh | [Cập nhật] | Thành viên | #6 Recommendation – gợi ý tài liệu | 100% |
+| 5 | Mông Thị Bích Hạnh | 2251061770 | Thành viên | #6 Recommendation – gợi ý tài liệu | 100% |
 
 > **Ghi chú:** Hạng mục #7 – Kiểm thử & đóng gói sản phẩm do cả nhóm cùng thực hiện.
 > Họ tên đầy đủ và mã sinh viên cần được cập nhật trước khi nộp bài.
